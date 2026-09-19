@@ -192,6 +192,99 @@ func (s *Store) ClicksSeriesRaw(ctx context.Context, linkID string, from, to tim
 	return out, nil
 }
 
+// The ForUser variants below scope a query to one user's own links via a
+// subquery on links.user_id — used for a non-admin's "my stats" dashboard so
+// it never returns other users' click data (PLAN.md §11.3 ownership rule).
+// Kept as separate functions rather than adding a parameter to the
+// link-scoped versions above, to avoid disturbing their existing call sites.
+
+func (s *Store) ClicksSeriesRawForUser(ctx context.Context, userID string, from, to time.Time, hourly bool) ([]TimeSeriesPoint, error) {
+	rows, err := s.query(ctx, `SELECT ts, is_bot FROM clicks WHERE ts >= ? AND ts < ? AND link_id IN (SELECT id FROM links WHERE user_id = ?)`,
+		toMillis(from), toMillis(to), userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	buckets := map[string]*TimeSeriesPoint{}
+	var order []string
+	for rows.Next() {
+		var tsMS int64
+		var isBot int
+		if err := rows.Scan(&tsMS, &isBot); err != nil {
+			return nil, err
+		}
+		t := fromMillis(tsMS).UTC()
+		key := t.Format("2006-01-02")
+		if hourly {
+			key = t.Format("2006-01-02T15")
+		}
+		p, ok := buckets[key]
+		if !ok {
+			p = &TimeSeriesPoint{Bucket: key}
+			buckets[key] = p
+			order = append(order, key)
+		}
+		if isBot != 0 {
+			p.Bots++
+		} else {
+			p.Clicks++
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	sortStrings(order)
+	out := make([]TimeSeriesPoint, 0, len(order))
+	for _, k := range order {
+		out = append(out, *buckets[k])
+	}
+	return out, nil
+}
+
+func (s *Store) TotalClicksForUser(ctx context.Context, userID string, from, to time.Time, includeBots bool) (int64, error) {
+	q := `SELECT count(*) FROM clicks WHERE ts >= ? AND ts < ? AND link_id IN (SELECT id FROM links WHERE user_id = ?)`
+	if !includeBots {
+		q += ` AND is_bot = 0`
+	}
+	var n int64
+	err := s.queryRow(ctx, q, toMillis(from), toMillis(to), userID).Scan(&n)
+	return n, err
+}
+
+func (s *Store) UniqueVisitorsForUser(ctx context.Context, userID string, from, to time.Time) (int64, error) {
+	var n int64
+	err := s.queryRow(ctx, `SELECT count(DISTINCT ip) FROM clicks WHERE ts >= ? AND ts < ? AND is_bot = 0 AND link_id IN (SELECT id FROM links WHERE user_id = ?)`,
+		toMillis(from), toMillis(to), userID).Scan(&n)
+	return n, err
+}
+
+func (s *Store) ClicksBreakdownForUser(ctx context.Context, userID, dim string, from, to time.Time, topN int) ([]BreakdownRow, error) {
+	col := map[string]string{
+		"country": "country", "device": "device", "os": "os", "browser": "browser", "referrer_host": "referrer_host",
+	}[dim]
+	if col == "" {
+		return nil, fmt.Errorf("unknown breakdown dimension %q", dim)
+	}
+	q := `SELECT ` + col + `, count(*) as c FROM clicks WHERE ts >= ? AND ts < ? AND is_bot = 0 AND link_id IN (SELECT id FROM links WHERE user_id = ?) GROUP BY ` + col + ` ORDER BY c DESC LIMIT ?`
+	rows, err := s.query(ctx, q, toMillis(from), toMillis(to), userID, topN)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []BreakdownRow
+	for rows.Next() {
+		var r BreakdownRow
+		if err := rows.Scan(&r.Key, &r.Clicks); err != nil {
+			return nil, err
+		}
+		if r.Key == "" {
+			r.Key = "(direct)"
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
 func sortStrings(s []string) {
 	for i := 1; i < len(s); i++ {
 		for j := i; j > 0 && s[j-1] > s[j]; j-- {

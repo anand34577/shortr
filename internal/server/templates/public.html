@@ -1,0 +1,42 @@
+{{define "layout"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>{{.Title}} · {{.SiteName}}</title>
+<style>
+  :root{--bg:#fafafa;--fg:#18181b;--muted:#71717a;--border:#e4e4e7;--accent:#4f46e5;--card:#fff}
+  @media (prefers-color-scheme: dark){:root{--bg:#09090b;--fg:#fafafa;--muted:#a1a1aa;--border:#27272a;--accent:#818cf8;--card:#18181b}}
+  *{box-sizing:border-box}
+  body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg);color:var(--fg);
+       font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,sans-serif;padding:16px}
+  .card{max-width:420px;width:100%;background:var(--card);border:1px solid var(--border);border-radius:16px;padding:32px;text-align:center}
+  .icon{font-size:40px;margin-bottom:8px}
+  h1{font-size:20px;margin:0 0 8px}
+  p{color:var(--muted);margin:0 0 20px}
+  input[type=password]{width:100%;padding:10px 12px;border-radius:10px;border:1px solid var(--border);background:var(--bg);color:var(--fg);font-size:15px;margin-bottom:12px}
+  button{width:100%;padding:10px 12px;border-radius:10px;border:0;background:var(--accent);color:#fff;font-size:15px;font-weight:600;cursor:pointer}
+  button:hover{opacity:.9}
+  .error{color:#ef4444;font-size:14px;margin-bottom:12px}
+  .brand{margin-top:20px;font-size:12px;color:var(--muted)}
+</style>
+</head>
+<body>
+  <div class="card">{{.Body}}</div>
+</body>
+</html>
+{{end}}
+
+{{define "not_found"}}<div class="icon">🔎</div><h1>Link not found</h1><p>This short link doesn't exist or was never created.</p>{{end}}
+
+{{define "gone"}}<div class="icon">⌛</div><h1>Link expired</h1><p>This short link is no longer available.</p>{{end}}
+
+{{define "disabled"}}<div class="icon">🚫</div><h1>Link disabled</h1><p>The owner has disabled this short link.</p>{{end}}
+
+{{define "password"}}<div class="icon">🔒</div><h1>Password required</h1><p>This link is protected. Enter the password to continue.</p>
+{{if .Error}}<div class="error">{{.Error}}</div>{{end}}
+<form method="post" action="/{{.Code}}">
+  <input type="password" name="password" placeholder="Password" autofocus required>
+  <button type="submit">Continue</button>
+</form>{{end}}
