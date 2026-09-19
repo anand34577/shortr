@@ -137,6 +137,17 @@ func (s *Store) Ping(ctx context.Context) error {
 	return s.read.PingContext(ctx)
 }
 
+// BackupSQLite writes a consistent point-in-time snapshot to destPath via
+// SQLite's VACUUM INTO — safe to run while writes are happening (PLAN.md
+// §18 "Backups"). No-op (returns an error) on postgres; use pg_dump there.
+func (s *Store) BackupSQLite(ctx context.Context, destPath string) error {
+	if s.Driver != "sqlite" {
+		return fmt.Errorf("BackupSQLite is only supported for the sqlite driver")
+	}
+	_, err := s.write.ExecContext(ctx, "VACUUM INTO ?", destPath)
+	return err
+}
+
 // q rewrites `?` placeholders to `$1, $2, ...` for postgres; no-op for sqlite.
 func (s *Store) q(query string) string {
 	if s.Driver != "postgres" {

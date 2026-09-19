@@ -69,6 +69,7 @@ func New(d Deps) *Server {
 		s.log = slog.Default()
 	}
 	s.routes()
+	go s.gcRateLimiters()
 	s.http = &http.Server{
 		Addr:              d.Config.Listen,
 		Handler:           s.handler,
@@ -88,6 +89,21 @@ func (s *Server) ListenAndServe() error {
 
 func (s *Server) Shutdown(ctx context.Context) error {
 	return s.http.Shutdown(ctx)
+}
+
+// gcRateLimiters periodically evicts idle buckets from the in-memory rate
+// limiters so their maps don't grow unbounded under a scanning attack
+// (PLAN.md §19.2). Runs for the process lifetime; no cancellation needed
+// since it holds no resources that need closing on shutdown.
+func (s *Server) gcRateLimiters() {
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
+	for range ticker.C {
+		s.rlRedirect.GC(10 * time.Minute)
+		s.rlAPI.GC(10 * time.Minute)
+		s.rlAuth.GC(10 * time.Minute)
+		s.rlPassword.GC(10 * time.Minute)
+	}
 }
 
 // --- request id ---------------------------------------------------------
