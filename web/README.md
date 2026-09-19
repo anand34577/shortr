@@ -1,32 +1,39 @@
-# React + TypeScript + Vite
+# Shortr web UI
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+The admin interface for Shortr: React 19, TypeScript, Vite, Tailwind, and
+TanStack Query. In production it is built to `web/dist` and embedded into the
+Go binary (see `webdist.go`), so there is nothing to deploy separately.
 
-Currently, two official plugins are available:
+## Develop
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+Run the Go backend on `:8080` first (`go run ./cmd/shortr` from the repo
+root), then:
 
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```bash
+npm install
+npm run dev
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+Vite serves the UI with hot reload and proxies `/api` and `/auth` to the
+backend. Point it somewhere else by copying `.env.example` to `.env` and
+changing `VITE_API_BASE`.
+
+## Scripts
+
+| Command | What it does |
+|---|---|
+| `npm run dev` | Dev server with HMR |
+| `npm run build` | Type-check (`tsc -b`) and produce `dist/` |
+| `npm run lint` | Oxlint |
+
+## Layout
+
+```
+src/app/         router, providers, layout shell (sidebar, topbar, command palette)
+src/components/  shared components; ui/ holds the primitives
+src/features/    one folder per area: links, analytics, settings, admin, ...
+src/lib/         API client, formatting and small helpers
+```
+
+Routes live under `/app`, which is also where the Go server mounts the
+built bundle.
