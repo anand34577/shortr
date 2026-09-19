@@ -56,7 +56,7 @@ deploy/docker-compose.postgres.yml up -d`. Behind Nginx Proxy Manager:
 
 ## Quick start (binary)
 
-Requires Go 1.25+ and Node 20+ to build from source.
+Requires Go 1.26+ and Node 20+ to build from source.
 
 ```bash
 make build          # builds web/ then the Go binary into bin/shortr

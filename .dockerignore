@@ -1,0 +1,13 @@
+.git
+.github
+.claude
+data
+bin
+dist
+docs
+deploy
+*.db
+*.db-*
+.env
+web/node_modules
+web/dist

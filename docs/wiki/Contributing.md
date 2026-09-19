@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- Go 1.25+
+- Go 1.26+
 - Node 20+
 - (optional) a MaxMind GeoLite2 `.mmdb` file if you're touching GeoIP code
 

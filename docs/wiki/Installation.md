@@ -5,7 +5,7 @@
 Requires Docker and Docker Compose.
 
 ```bash
-git clone https://github.com/<your-org>/shortr.git
+git clone https://github.com/anand34577/shortr.git
 cd shortr
 cp .env.example .env      # set SHORTR_BASE_URL at minimum
 docker compose up -d
@@ -66,10 +66,10 @@ The shipped unit already sets `DynamicUser=yes`, `NoNewPrivileges=yes`,
 
 ## Option 4 — build from source
 
-Requires Go 1.25+ and Node 20+.
+Requires Go 1.26+ and Node 20+.
 
 ```bash
-git clone https://github.com/<your-org>/shortr.git
+git clone https://github.com/anand34577/shortr.git
 cd shortr
 make build          # builds web/ then the Go binary into bin/shortr
 SHORTR_BASE_URL=http://localhost:8080 ./bin/shortr
