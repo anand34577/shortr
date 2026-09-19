@@ -1,7 +1,7 @@
 // Package jobs runs the periodic background maintenance shortr needs:
 // session/rate-limit GC, expired-link notices, click retention, and SQLite
 // backups. Each job is independent, catches its own panics, and logs rather
-// than crashing the process (PLAN.md §6 background jobs list).
+// than crashing the process.
 package jobs
 
 import (
@@ -159,7 +159,7 @@ func (r *Runner) idempotencyGC(ctx context.Context) error {
 // expiryNotices tells link owners (and, best-effort, admins) about links
 // expiring within the next 24h, once — future ticks won't re-notify because
 // ListExpiringLinks only returns links that haven't expired yet, and once a
-// link expires it drops out of this query naturally. ponytail: no
+// link expires it drops out of this query naturally. no
 // "already notified" flag; an owner may get the email more than once if the
 // job runs twice before the link actually expires (harmless, rare given the
 // 6h interval vs 24h window).

@@ -62,7 +62,7 @@ type setupReq struct {
 	// stored in the settings table. BaseURL is accepted for the wizard's UX
 	// (it round-trips the server-computed origin back for confirmation) but
 	// is intentionally NOT applied here — SHORTR_BASE_URL is config-driven
-	// and authoritative (PLAN.md §18 "no Host-header injection"), so setup
+	// and authoritative, so setup
 	// only tells the admin to update the env var if it doesn't match.
 	SiteName string `json:"siteName"`
 	BaseURL  string `json:"baseUrl"`

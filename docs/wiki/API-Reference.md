@@ -88,5 +88,4 @@ every handler:
 the redirect hot path itself: `GET /{code}`.
 
 See also: [MCP Server](MCP-Server.md) for the AI-agent-facing tool surface
-built on top of this same auth model, and [PLAN.md](../../PLAN.md) for the
-full field-by-field request/response spec.
+built on top of this same auth model.

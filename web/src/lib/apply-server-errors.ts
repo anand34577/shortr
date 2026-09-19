@@ -4,8 +4,8 @@ import { toast } from "sonner";
 
 /**
  * Maps the API error envelope's `fields` map onto react-hook-form field
- * errors (PLAN.md §15.3: "Forms show server field errors next to the
- * field, never only a toast"). Falls back to a toast for non-field errors.
+ * errors, so they show next to the field rather than only in a toast.
+ * Falls back to a toast for non-field errors.
  */
 export function applyServerErrors<T extends FieldValues>(
   err: unknown,

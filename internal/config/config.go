@@ -1,5 +1,5 @@
 // Package config loads and validates all runtime configuration from
-// environment variables (see PLAN.md §6). Fails fast (returns an error) on
+// environment variables. Fails fast (returns an error) on
 // anything invalid so the process never starts half-configured.
 package config
 

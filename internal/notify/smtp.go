@@ -2,9 +2,9 @@
 // the system, for admin alerts) has enabled: an in-app row (always, for the
 // bell / browser-Notification-API feed the frontend polls), optional email
 // (SMTP), and optional Gotify push. All are best-effort: a delivery failure
-// on one channel never blocks another or the caller (PLAN.md: "no 3rd-party
-// app dependency" — both SMTP and Gotify are entirely optional and
-// self-hosted/self-configured, never required for core function).
+// on one channel never blocks another or the caller. Both SMTP and Gotify are
+// entirely optional and
+// self-configured, never required for core function.
 package notify
 
 import (

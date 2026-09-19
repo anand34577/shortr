@@ -7,7 +7,7 @@ import (
 
 // GetIdempotentResponse returns a previously stored response body for
 // (key, userID), if one exists and hasn't expired (24h, enforced by caller
-// via CreatedAt). ponytail: single table instead of a separate cache; the
+// via CreatedAt). single table instead of a separate cache; the
 // row is tiny and self-cleans via PruneIdempotencyKeys.
 func (s *Store) GetIdempotentResponse(ctx context.Context, key, userID string) (string, bool, error) {
 	var resp, uid string

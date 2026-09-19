@@ -1,7 +1,6 @@
 // Command shortr is a self-hosted URL shortener: single static binary,
 // embedded SQLite by default (or PostgreSQL), embedded React frontend,
 // OIDC/local auth, analytics, and optional SMTP/Gotify notifications.
-// See PLAN.md for the full design.
 package main
 
 import (
@@ -84,7 +83,7 @@ Usage:
   shortr healthcheck             Exit 0 if the local server is healthy (used by Docker HEALTHCHECK)
   shortr version                 Print version info
 
-Configuration is via SHORTR_* environment variables — see PLAN.md §6.`)
+Configuration is via SHORTR_* environment variables — run "shortr config check" to validate them.`)
 }
 
 func setupLogger(cfg *config.Config) *slog.Logger {

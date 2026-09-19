@@ -1,7 +1,7 @@
 // Package ratelimit implements an in-memory token-bucket limiter keyed by an
-// arbitrary string (IP, user id, API key id, email). ponytail: per-node only
+// arbitrary string (IP, user id, API key id, email). per-node only
 // — a shared limiter is only needed once shortr runs multiple replicas,
-// which v1 doesn't support anyway (see PLAN.md §25).
+// which v1 doesn't support anyway.
 package ratelimit
 
 import (
@@ -116,7 +116,7 @@ func (l *Limiter) evictOldestLocked() {
 }
 
 // GC removes buckets untouched for longer than idle — run periodically from
-// a background ticker to bound memory (PLAN.md §19.2).
+// a background ticker to bound memory.
 func (l *Limiter) GC(idle time.Duration) {
 	cutoff := time.Now().Add(-idle)
 	l.mu.Lock()

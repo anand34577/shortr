@@ -1,4 +1,4 @@
-// Typed shapes for the Shortr HTTP API (PLAN.md §13).
+// Typed shapes for the Shortr HTTP API.
 //
 // NOTE: the Go backend is being implemented in parallel by another engineer.
 // Field names here assume standard `encoding/json` camelCase struct tags
@@ -240,7 +240,7 @@ export interface IPLocation {
   asnOrganization: string;
 }
 
-// --- Notifications (extends PLAN.md; product also has SMTP + Gotify + browser push) ---
+// --- Notifications ---
 
 export type NotificationKind =
   | "user.registered"

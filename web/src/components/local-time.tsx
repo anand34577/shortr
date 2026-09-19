@@ -1,7 +1,7 @@
 import { format, formatDistanceToNow, parseISO } from "date-fns";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
 
-/** Displays a timestamp in the viewer's local timezone with a UTC tooltip (PLAN.md §15.3). */
+/** Displays a timestamp in the viewer's local timezone with a UTC tooltip. */
 export function LocalTime({
   iso,
   relative = false,

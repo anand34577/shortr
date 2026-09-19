@@ -1,7 +1,7 @@
 import type { ApiErrorBody } from "./types";
 
 /**
- * Typed fetch wrapper for the Shortr API (PLAN.md §13.1).
+ * Typed fetch wrapper for the Shortr API.
  *
  * - Success responses are returned as-is (either the resource or a
  *   `{items,next_cursor,total}` page envelope).

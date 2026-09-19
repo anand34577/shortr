@@ -46,15 +46,10 @@ install steps.
 
 ## Horizontal scaling
 
-Shortr is **not** designed for multiple concurrently-running replicas behind
-a load balancer in v1: rate-limit buckets, the redirect-path in-memory link
-cache, and idempotency keys are all per-process. Running two instances
-against the same database will work functionally, but each instance
-enforces its own rate limits and can serve a stale cached link briefly after
-another instance updates it. If you need more redirect throughput than one
-instance provides, scale vertically first; see
-[PLAN.md §25](../../PLAN.md#25-limitations) for the full list of v1
-limitations.
+Run a single Shortr instance. Rate limits and the link cache are kept in
+memory per process, so several instances behind a load balancer would each
+enforce their own limits. If you need more throughput, give the one instance
+more CPU first.
 
 ## Observability
 

@@ -48,7 +48,7 @@ func (s *Server) handleMarkAllNotificationsRead(w http.ResponseWriter, r *http.R
 // vocabularies of "kind" don't overlap 1:1, so per-kind toggles set here
 // only govern the frontend's own client-side kinds; backend-originated
 // notifications (see internal/notify.Kind) keep defaulting to "on" for
-// every channel, per PLAN.md §29's secure-default policy. "browser" isn't
+// every channel (secure by default). "browser" isn't
 // tracked server-side at all — that decision is entirely client-side
 // (Notification permission + tab visibility), so it's accepted and echoed
 // back for round-tripping but not otherwise interpreted here.

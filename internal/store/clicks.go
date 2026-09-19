@@ -184,8 +184,8 @@ type TimeSeriesPoint struct {
 }
 
 // ClicksSeriesRaw buckets raw clicks by UTC day (bucket=day/week/month->day
-// then re-bucketed in Go) or by hour, between from/to. See PLAN.md §10.5:
-// day+ granularity buckets by UTC day; hour granularity used for short ranges.
+// then re-bucketed in Go) or by hour, between from/to.
+// Day and coarser granularities bucket by UTC day; hourly is for short ranges.
 func (s *Store) ClicksSeriesRaw(ctx context.Context, linkID string, from, to time.Time, hourly bool) ([]TimeSeriesPoint, error) {
 	var where []string
 	var args []any
@@ -200,7 +200,7 @@ func (s *Store) ClicksSeriesRaw(ctx context.Context, linkID string, from, to tim
 
 // The ForUser variants below scope a query to one user's own links via a
 // subquery on links.user_id — used for a non-admin's "my stats" dashboard so
-// it never returns other users' click data (PLAN.md §11.3 ownership rule).
+// it never returns other users' click data.
 // Kept as separate functions rather than adding a parameter to the
 // link-scoped versions above, to avoid disturbing their existing call sites.
 
@@ -211,8 +211,8 @@ func (s *Store) ClicksSeriesRawForUser(ctx context.Context, userID string, from,
 
 // clicksSeriesRaw is the shared implementation both public variants route
 // through: buckets clicks by UTC day/hour, counting clicks, bots, and
-// per-bucket unique IPs (used for the dashboard "uniques" line — see
-// PLAN.md §10.3, an approximation under IP_MODE=anonymize).
+// per-bucket unique IPs (used for the dashboard "uniques" line, an
+// approximation under IP_MODE=anonymize).
 //
 // Bucketing and aggregation both happen in SQL (dialect-specific date
 // truncation) rather than by scanning every raw row into Go, so a link with
@@ -380,7 +380,7 @@ func (s *Store) TotalClicks(ctx context.Context, linkID string, from, to time.Ti
 }
 
 // DeleteClicksOlderThan removes raw clicks before cutoff, in chunks, to
-// avoid a single long-running lock (PLAN.md §10.4).
+// avoid a single long-running lock.
 func (s *Store) DeleteClicksOlderThan(ctx context.Context, cutoff time.Time, chunk int) (int64, error) {
 	var total int64
 	for {

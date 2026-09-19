@@ -83,7 +83,7 @@ func (s *Store) GetLinkByID(ctx context.Context, id string) (*Link, error) {
 
 // GetLinkByCode looks up an exact match first (the common, hot-path case),
 // falling back to a case-insensitive match so `/ABC` resolves the same link
-// as `/abc` (see PLAN.md §8).
+// as `/abc`.
 func (s *Store) GetLinkByCode(ctx context.Context, code string) (*Link, error) {
 	row := s.queryRow(ctx, `SELECT `+linkCols+` FROM links WHERE code = ?`, code)
 	l, err := linkFromRow(row)

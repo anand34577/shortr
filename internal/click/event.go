@@ -6,7 +6,7 @@ import (
 )
 
 // Event is what the redirect handler builds — raw, unparsed data only, so
-// the hot path does zero UA/Geo work (PLAN.md §10.1 step 1).
+// the hot path does zero UA/Geo work.
 type Event struct {
 	LinkID         string
 	TS             time.Time

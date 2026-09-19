@@ -6,7 +6,7 @@ import { RequireAuth, RequireAdmin, RequireSetup, RequireGuest } from "@/app/gua
 
 // Auth pages are on the critical path (first paint before login) so they're
 // eagerly bundled. Everything behind auth — especially the chart-heavy link
-// detail page and the admin section — is route-split (PLAN.md §14.3).
+// detail page and the admin section — is route-split.
 import LoginPage from "@/features/auth/login-page";
 import SetupPage from "@/features/auth/setup-page";
 import RegisterPage from "@/features/auth/register-page";

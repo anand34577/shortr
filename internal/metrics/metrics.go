@@ -1,6 +1,6 @@
 // Package metrics is a hand-rolled Prometheus text-exposition counter set —
 // about a dozen series, not worth pulling in client_golang's dependency tree
-// for (PLAN.md §3.1).
+// for.
 package metrics
 
 import (

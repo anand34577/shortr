@@ -135,7 +135,7 @@ func validTZ(tz string) bool {
 }
 
 // handleSudo re-verifies the caller's password and starts a fresh sudo
-// window (PLAN.md §11.2), so sensitive actions work for long-lived sessions.
+// window, so sensitive actions work for long-lived sessions.
 func (s *Server) handleSudo(w http.ResponseWriter, r *http.Request, u *store.User) {
 	var req struct {
 		Password string `json:"password"`

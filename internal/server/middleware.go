@@ -23,7 +23,7 @@ func chain(h http.Handler, mws ...middleware) http.Handler {
 // --- recover -------------------------------------------------------------
 
 // recoverMiddleware ensures a panic in any handler becomes a 500, never a
-// crashed process (PLAN.md §17.1).
+// crashed process.
 func (s *Server) recoverMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
@@ -50,7 +50,7 @@ func (s *Server) requestIDMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-// --- real IP (PLAN.md §23.2) ---------------------------------------------
+// --- real IP ---------------------------------------------
 
 func (s *Server) realIPMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -145,7 +145,7 @@ func (s *Server) loggingMiddleware(next http.Handler) http.Handler {
 		dur := time.Since(start)
 		level := slog.LevelInfo
 		// redirects are extremely high-volume; keep them at debug by default
-		// (PLAN.md §21 "at 10k/s logging every redirect is the bottleneck")
+		//
 		isRedirect := r.Method == http.MethodGet && !strings.HasPrefix(r.URL.Path, "/api/") &&
 			!strings.HasPrefix(r.URL.Path, "/app") && !strings.HasPrefix(r.URL.Path, "/auth") &&
 			r.URL.Path != "/healthz" && r.URL.Path != "/readyz" && r.URL.Path != "/metrics"
@@ -167,7 +167,7 @@ func (s *Server) loggingMiddleware(next http.Handler) http.Handler {
 }
 
 // routeTemplate collapses path params for metrics cardinality (never logs a
-// raw short code as a metric label — PLAN.md §21).
+// raw short code as a metric label).
 func routeTemplate(r *http.Request) string {
 	p := r.URL.Path
 	switch {
@@ -207,7 +207,7 @@ func (s *Server) securityHeadersMiddleware(next http.Handler) http.Handler {
 
 // rateLimitMiddleware applies limiter keyed by keyFn(r); on exhaustion it
 // responds 429 with Retry-After and stops the chain. scope is the metrics
-// label (PLAN.md §19.2).
+// label.
 func (s *Server) rateLimitMiddleware(limiter interface{ Allow(string) bool }, scope string, keyFn func(*http.Request) string) middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -225,8 +225,8 @@ func (s *Server) rateLimitMiddleware(limiter interface{ Allow(string) bool }, sc
 
 // apiRateLimitMiddleware applies RATE_LIMIT_API to every /api/v1/* request,
 // keyed by the authenticated user/API-key id when known (so one user's
-// traffic can't starve another's), falling back to IP otherwise (PLAN.md
-// §19.2). Runs after withIdentityMiddleware so identity is available.
+// traffic can't starve another's), falling back to IP otherwise.
+// Runs after withIdentityMiddleware so identity is available.
 func (s *Server) apiRateLimitMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !strings.HasPrefix(r.URL.Path, "/api/") && r.URL.Path != "/mcp" {
@@ -257,7 +257,7 @@ func ipKeyFn(r *http.Request) string {
 	if v4 := ip.To4(); v4 != nil {
 		return v4.String()
 	}
-	// IPv6: key by /64 to avoid trivial per-address bypass (PLAN.md §19.2)
+	// IPv6: key by /64 to avoid trivial per-address bypass
 	v6 := ip.To16()
 	if v6 == nil {
 		return ip.String()

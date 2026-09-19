@@ -365,7 +365,7 @@ func (s *Server) handleExportClicks(w http.ResponseWriter, r *http.Request, u *s
 }
 
 // csvSafe prefixes a leading =+-@ with a single quote to defeat formula
-// injection when the CSV is opened in a spreadsheet app (PLAN.md §10.4).
+// injection when the CSV is opened in a spreadsheet app.
 func csvSafe(s string) string {
 	if len(s) > 0 {
 		switch s[0] {

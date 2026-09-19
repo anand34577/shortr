@@ -270,7 +270,7 @@ func hostFromIssuer(issuer string) string {
 }
 
 // hasSudo reports whether the current session was established (or last
-// re-authenticated) within the sudo window (PLAN.md §11.2/§12.2).
+// re-authenticated) within the sudo window.
 func (s *Server) hasSudo(r *http.Request) bool {
 	sess := sessionFromContext(r.Context())
 	if sess == nil {

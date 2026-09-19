@@ -121,7 +121,7 @@ func (s *Server) handlePutPassword(w http.ResponseWriter, r *http.Request, u *st
 		respondError(w, r, err)
 		return
 	}
-	// changing password invalidates every other session (PLAN.md §24.3)
+	// changing password invalidates every other session
 	cur := sessionFromContext(r.Context())
 	keepID := ""
 	if cur != nil {

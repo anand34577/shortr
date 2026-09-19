@@ -31,7 +31,7 @@ type OIDCConfig struct {
 
 // Manager wraps OIDC discovery + verification. Discovery can fail at
 // startup (provider down); Manager retries lazily so the app still boots
-// (PLAN.md §24.4 "discovery fails at startup").
+//.
 type Manager struct {
 	cfg OIDCConfig
 
@@ -239,7 +239,7 @@ func extractGroups(raw map[string]any, claim string) []string {
 	default:
 		b, _ := json.Marshal(v)
 		if len(b) > 32*1024 {
-			return nil // guard against absurd token sizes (PLAN.md §24.4)
+			return nil // guard against absurd token sizes
 		}
 		return nil
 	}

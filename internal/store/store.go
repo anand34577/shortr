@@ -157,8 +157,8 @@ func (s *Store) DBSizeBytes(ctx context.Context, sqlitePath string) int64 {
 }
 
 // BackupSQLite writes a consistent point-in-time snapshot to destPath via
-// SQLite's VACUUM INTO — safe to run while writes are happening (PLAN.md
-// §18 "Backups"). No-op (returns an error) on postgres; use pg_dump there.
+// SQLite's VACUUM INTO — safe to run while writes are happening.
+// No-op (returns an error) on postgres; use pg_dump there.
 func (s *Store) BackupSQLite(ctx context.Context, destPath string) error {
 	if s.Driver != "sqlite" {
 		return fmt.Errorf("BackupSQLite is only supported for the sqlite driver")
@@ -314,7 +314,7 @@ func (s *Store) applyMigration(ctx context.Context, version int, sqlText string)
 
 // splitStatements splits a .sql file on semicolons at statement boundaries.
 // Our migration files never contain semicolons inside string literals, so a
-// naive split is sufficient (ponytail: no real SQL parser needed here).
+// naive split is sufficient (no real SQL parser needed here).
 func splitStatements(s string) []string {
 	return strings.Split(s, ";")
 }

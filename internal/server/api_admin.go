@@ -232,8 +232,8 @@ func (s *Server) handleAdminDeleteUserIdentity(w http.ResponseWriter, r *http.Re
 // keys, and OIDC identities cascade-delete with them (FK ON DELETE
 // CASCADE); their links are kept but orphaned (user_id -> NULL via ON
 // DELETE SET NULL), matching the "keep" behavior of a self-service account
-// deletion (PLAN.md §13.2 DELETE /api/v1/me?links=delete|keep — admin
-// deletion always keeps links, since there's no one left to ask).
+// deletion (an admin
+// deleting a user always keeps links, since there's no one left to ask).
 func (s *Server) handleAdminDeleteUser(w http.ResponseWriter, r *http.Request, actor *store.User, id string) {
 	u, err := s.store.GetUserByID(r.Context(), id)
 	if err != nil {
@@ -263,7 +263,7 @@ func (s *Server) handleAdminDeleteUser(w http.ResponseWriter, r *http.Request, a
 
 // adminSettableKeys maps the wire (camelCase, matching web/src/lib/types.ts
 // AdminSettings) field name to its internal settings-table key. Runtime
-// editable per PLAN.md §6; everything else in AdminSettings (baseUrl,
+// editable; everything else in AdminSettings (baseUrl,
 // ipMode, oidcEnabled, clickRetentionDays) is env-var-driven and
 // intentionally read-only here — see handleAdminGetSettings.
 var adminSettableKeys = map[string]string{
@@ -418,7 +418,7 @@ func (s *Server) handleAdminPurgeLink(w http.ResponseWriter, r *http.Request, ac
 
 // handleAdminBackup triggers an immediate SQLite snapshot (VACUUM INTO) on
 // demand from the admin System page, in addition to the scheduled
-// SHORTR_BACKUP_INTERVAL job (PLAN.md §6, §22.6).
+// SHORTR_BACKUP_INTERVAL job.
 func (s *Server) handleAdminBackup(w http.ResponseWriter, r *http.Request, actor *store.User) {
 	if s.cfg.DBDriver != "sqlite" {
 		respondError(w, r, NewAPIError(http.StatusBadRequest, "BAD_REQUEST", "on-demand backup is only supported for the sqlite driver; use pg_dump for postgres"))

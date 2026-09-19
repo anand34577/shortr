@@ -8,7 +8,7 @@ import (
 
 // handleHealthz is liveness only: 200 as long as the process can respond,
 // even mid-DB-outage — so a proxy routing on this keeps sending traffic and
-// cached redirects keep working (PLAN.md §20 "health semantics").
+// cached redirects keep working.
 func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("ok"))

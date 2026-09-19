@@ -54,7 +54,7 @@ type Service struct {
 // ConsumeClick reserves one click against a link's max_clicks limit and
 // reports whether the redirect may proceed. The counter is seeded from the
 // stored click_count and lives in memory, so the limit holds even before the
-// batch writer has flushed the click to the database (PLAN.md §9.1).
+// batch writer has flushed the click to the database.
 func (s *Service) ConsumeClick(l *store.Link) bool {
 	if l.MaxClicks == nil {
 		return true

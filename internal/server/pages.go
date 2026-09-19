@@ -20,7 +20,7 @@ var pageTitles = map[string]string{
 }
 
 // siteName is a static brand string for server-rendered public pages
-// (ponytail: not read from the settings table on every 404/410 — that would
+// (not read from the settings table on every 404/410 — that would
 // put a DB query on the redirect miss path; the SPA reads the live
 // site_name setting via the API for the admin-configurable branding there).
 const siteName = "Shortr"

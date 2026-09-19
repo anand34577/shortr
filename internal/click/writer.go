@@ -38,7 +38,7 @@ func (c *WriterConfig) setDefaults() {
 // Writer consumes click events off a buffered channel, enriches them
 // (UA/Geo/IP-mode), and batches inserts into the store. On sustained DB
 // failure it spools batches to disk as JSONL and keeps accepting new events
-// — a redirect never blocks on this (PLAN.md §10.1).
+// — a redirect never blocks on this.
 type Writer struct {
 	cfg     WriterConfig
 	store   *store.Store

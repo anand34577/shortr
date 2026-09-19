@@ -16,7 +16,7 @@ import (
 
 // handleRedirect is the hot path: cache lookup, a handful of status checks,
 // one header write, a non-blocking click enqueue. No DB write, no template
-// render on the success path (PLAN.md §9).
+// render on the success path.
 func (s *Server) handleRedirect(w http.ResponseWriter, r *http.Request) {
 	code := strings.TrimPrefix(r.URL.Path, "/")
 	if strings.HasSuffix(code, "/") {
@@ -120,7 +120,7 @@ func (s *Server) buildTargetURL(l *store.Link, r *http.Request) string {
 						q.Add(k, v)
 					}
 				}
-			} // else: silently skip merge, redirect to target as-is (PLAN.md §24.1 "query merge > 2KB")
+			} // else: silently skip merge, redirect to target as-is
 		}
 	}
 	addIfAbsent := func(key, val string) {

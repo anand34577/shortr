@@ -32,16 +32,20 @@ and rate limiting see real visitor IPs, not the proxy's.
 
 ## Option 2 — Prebuilt binary
 
-Grab the archive for your OS/arch from the
-[Releases page](../../../../releases) (built automatically by CI on every
-tagged version — see [.github/workflows/release.yml](../../.github/workflows/release.yml)).
-Verify the checksum against `SHA256SUMS` in the same release, then:
+Download the binary for your platform from the
+[Releases page](https://github.com/anand34577/shortr/releases) and check it
+against the `SHA256SUMS` file from the same release:
 
 ```bash
-tar -xzf shortr-linux-amd64.tar.gz   # or unzip the .exe on Windows
-export SHORTR_BASE_URL=https://links.example.com
-./shortr
+curl -LO https://github.com/anand34577/shortr/releases/latest/download/shortr-linux-amd64
+curl -LO https://github.com/anand34577/shortr/releases/latest/download/SHA256SUMS
+sha256sum --check --ignore-missing SHA256SUMS
+chmod +x shortr-linux-amd64
+SHORTR_BASE_URL=https://links.example.com ./shortr-linux-amd64
 ```
+
+Available files: `shortr-linux-amd64`, `shortr-linux-arm64`,
+`shortr-darwin-amd64`, `shortr-darwin-arm64` and `shortr-windows-amd64.exe`.
 
 On first run with no users in the database, visit `/app/setup` to create the
 first admin account (or set `SHORTR_ADMIN_EMAIL` / `SHORTR_ADMIN_PASSWORD`
@@ -50,19 +54,17 @@ to seed one non-interactively — see [Configuration](Configuration.md)).
 ## Option 3 — systemd (bare metal / VM)
 
 ```bash
-sudo useradd --system --home /var/lib/shortr --shell /usr/sbin/nologin shortr || true
-sudo mkdir -p /opt/shortr /var/lib/shortr
-sudo cp shortr /opt/shortr/shortr
+sudo install -m 0755 shortr-linux-amd64 /usr/local/bin/shortr
+sudo mkdir -p /etc/shortr
+sudoedit /etc/shortr/env        # SHORTR_BASE_URL=https://links.example.com
 sudo cp deploy/shortr.service /etc/systemd/system/shortr.service
 sudo systemctl daemon-reload
 sudo systemctl enable --now shortr
 ```
 
-Edit `/etc/systemd/system/shortr.service` (or drop an
-`/etc/systemd/system/shortr.service.d/override.conf`) to set your
-`SHORTR_*` environment variables — see [Configuration](Configuration.md).
-The shipped unit already sets `DynamicUser=yes`, `NoNewPrivileges=yes`,
-`ProtectSystem=strict`, and a `Restart=always` policy.
+Put your `SHORTR_*` variables in `/etc/shortr/env`, one `KEY=value` per
+line — see [Configuration](Configuration.md). The unit runs as a dynamic
+user, keeps its data in `/var/lib/shortr`, and restarts on failure.
 
 ## Option 4 — build from source
 

@@ -1,6 +1,6 @@
 // Package click implements the async click-event pipeline: enrichment
 // (user-agent parsing, GeoIP, bot detection), batched writes, and a
-// disk spool so clicks survive a database outage (see PLAN.md §10).
+// disk spool so clicks survive a database outage.
 package click
 
 import (
@@ -11,7 +11,7 @@ import (
 
 // extraBotSubstrings catches common non-browser / preview-fetcher clients
 // that the useragent library's IsBot() doesn't always flag, notably chat-app
-// link unfurlers (PLAN.md §10.2 "link-preview fetchers").
+// link unfurlers.
 var extraBotSubstrings = []string{
 	"whatsapp", "telegrambot", "discordbot", "slackbot", "twitterbot",
 	"facebookexternalhit", "linkedinbot", "skypeuripreview", "embedly",

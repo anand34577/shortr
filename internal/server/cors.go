@@ -6,7 +6,7 @@ import "net/http"
 // explicitly whitelisted (SHORTR_CORS_ORIGINS) — meant for the future
 // browser extension (chrome-extension://<id>) and Android WebView dev,
 // which authenticate with a Bearer API key rather than cookies, so no
-// credentialed CORS is ever needed (PLAN.md §13.3, §26).
+// credentialed CORS is ever needed.
 func (s *Server) corsMiddleware(next http.Handler) http.Handler {
 	if len(s.cfg.CORSOrigins) == 0 {
 		return next

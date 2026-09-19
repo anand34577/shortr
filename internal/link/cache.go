@@ -14,7 +14,7 @@ const defaultTTL = 5 * time.Minute
 const negativeTTL = 60 * time.Second
 
 // Entry is the fully-resolved data the redirect handler needs — no DB touch
-// on a cache hit (PLAN.md §9.1).
+// on a cache hit.
 type Entry struct {
 	Link    *store.Link
 	Missing bool // negative-cache marker for unknown codes

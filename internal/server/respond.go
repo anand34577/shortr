@@ -29,7 +29,7 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	}
 }
 
-// respondError maps an error to the PLAN.md §17 envelope. Unknown errors
+// respondError maps an error to the standard error envelope. Unknown errors
 // (not *APIError, not a known store sentinel) become a generic 500 — no
 // internal detail (SQL, paths, stack traces) ever reaches the client; the
 // full error is logged server-side with the request id for correlation.
@@ -72,7 +72,7 @@ func respondList[T any](w http.ResponseWriter, items []T, nextCursor string) {
 }
 
 // decodeJSON reads and validates a JSON body: size-limited, rejects unknown
-// fields (PLAN.md §13.3 / §16 "JSON bodies").
+// fields.
 func decodeJSON(w http.ResponseWriter, r *http.Request, maxBytes int64, dst any) error {
 	if maxBytes <= 0 {
 		maxBytes = 64 * 1024

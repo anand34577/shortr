@@ -1,67 +1,34 @@
 # Security
 
-This page summarizes the security model so operators know what's handled
-for them and what's their responsibility. Shortr has been through a full
-audit pass (auth, database, business logic, HTTP surface, deployment
-config) — see the git history for details of what was found and fixed.
+## Good practice for operators
 
-## Handled for you
+- **Put Shortr behind HTTPS.** It serves plain HTTP; terminate TLS in a
+  reverse proxy. See [Deployment](Deployment.md).
+- **Set `SHORTR_TRUSTED_PROXIES`** when you use a reverse proxy. Without it,
+  visitor IPs, analytics and rate limits are all based on the proxy's
+  address.
+- **Set `SHORTR_SECRET_KEY` explicitly** if you move the data directory or
+  run from more than one location. Otherwise a key is generated and stored in
+  the data directory.
+- **Keep private-network targets blocked.** `SHORTR_ALLOW_PRIVATE_TARGETS`
+  is off by default. Turning it on lets every user create links to internal
+  addresses.
+- **Give API keys the smallest scopes they need**, especially keys used by
+  scripts or AI assistants. `admin:*` is only needed for admin endpoints.
+- **Protect `/metrics`** with `SHORTR_METRICS_TOKEN` if it is reachable from
+  outside your monitoring network.
+- **Keep secrets out of version control.** Use environment variables or an
+  untracked `.env` file for SMTP, OIDC and database credentials.
+- **Back up regularly.** See [Backup and Restore](Backup-and-Restore.md).
 
-- **Passwords:** argon2id (t=3, 64MB memory), constant-time comparison,
-  automatic rehash-on-upgrade if parameters change, and a dummy-hash timing
-  defense so login timing doesn't reveal whether an email exists.
-- **Sessions & API keys:** opaque random tokens; only a SHA-256 hash is ever
-  stored, so a database leak alone doesn't hand out live credentials.
-  Sessions are invalidated on password change or account disable.
-- **CSRF:** double-submit token + `Origin` check on every session-cookie
-  mutating request. Bearer/API-key requests are exempt (they carry no
-  ambient cookie, so CSRF doesn't apply to them).
-- **CORS:** explicit allowlist via `SHORTR_CORS_ORIGINS`; never a wildcard
-  combined with credentials.
-- **SSRF:** link-target and title-fetch validation blocks
-  loopback/private/link-local/CGNAT ranges by default
-  (`SHORTR_ALLOW_PRIVATE_TARGETS=false`), and the title-fetcher re-checks
-  the *actual connected IP* at dial time — not just the hostname — which
-  defeats DNS-rebinding attacks. Redirects during title fetch are capped at
-  3 hops, each re-validated.
-- **API key scopes:** `links:read`, `links:write`, `stats:read`, `admin:*`.
-  A key minted with a narrow scope cannot escalate to admin functionality
-  even if it belongs to an admin user — every admin route checks both
-  `user.IsAdmin()` and, for API-key callers, the `admin:*` scope.
-- **Open redirect:** post-login/OIDC redirect targets are validated to start
-  with `/app` and rejected if they contain `//` or a backslash.
-- **Rate limiting:** separate limiters for login/register/OIDC-start (keyed
-  by email *and* IP), general API traffic (keyed by user/API-key, falling
-  back to IP), and the redirect hot path — plus a self-limit on the sudo
-  (step-up re-auth) endpoint.
-- **Panic isolation:** a top-level recover middleware means a single bad
-  request can't crash the process; the async click-writer additionally
-  recovers per-event so a malformed GeoIP record or user-agent string drops
-  one click, not the entire analytics pipeline.
-- **Secrets:** never logged in plaintext (`Config.Redacted()` masks them
-  before the startup config log line), and the auto-generated
-  `secret.key` file is written with `0600` permissions.
+## If a key or session leaks
 
-## Your responsibility as an operator
-
-- **Set `SHORTR_TRUSTED_PROXIES`** if you're behind any reverse proxy —
-  otherwise real client IPs (and therefore analytics + rate limiting)
-  silently degrade to "everything is the proxy's IP."
-- **Set `SHORTR_SECRET_KEY` explicitly** for multi-instance or
-  redeploy-to-a-different-host setups; the auto-generated one is tied to the
-  data directory it's stored in.
-- **Don't enable `SHORTR_ALLOW_PRIVATE_TARGETS`** unless you specifically
-  need internal-network short links — it's a global, all-users toggle.
-- **Scope API keys narrowly.** Especially for MCP/agent use — give an agent
-  `links:write` only if that's all it needs, not `admin:*`.
-- **Keep GeoIP/SMTP/Gotify credentials out of version control** — they're
-  environment variables for a reason; `.env` is gitignored by default.
-- **Rotate a leaked API key or session** immediately: Settings → API Keys
-  (revoke) or Settings → Security → Sessions (revoke), or as an admin,
-  `DELETE /api/v1/users/{id}/sessions`.
+Revoke it right away: **Settings → API keys** for keys, **Settings →
+Security** for sessions. Admins can also end all of a user's sessions from
+the user's page in the admin panel.
 
 ## Reporting a vulnerability
 
-If you find a security issue, please **don't** open a public GitHub issue.
-Instead email the maintainer directly (see the repository's contact info)
-with reproduction steps; a fix and coordinated disclosure will follow.
+Please don't open a public issue. Email the maintainer or use GitHub's
+private vulnerability reporting on the repository's Security tab, and include
+steps to reproduce.

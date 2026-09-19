@@ -98,7 +98,7 @@ func (s *Server) Shutdown(ctx context.Context) error {
 
 // gcRateLimiters periodically evicts idle buckets from the in-memory rate
 // limiters so their maps don't grow unbounded under a scanning attack
-// (PLAN.md §19.2). Runs for the process lifetime; no cancellation needed
+//. Runs for the process lifetime; no cancellation needed
 // since it holds no resources that need closing on shutdown.
 func (s *Server) gcRateLimiters() {
 	ticker := time.NewTicker(5 * time.Minute)

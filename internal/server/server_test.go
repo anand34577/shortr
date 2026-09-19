@@ -119,7 +119,7 @@ func TestSetupLoginCreateRedirectStats(t *testing.T) {
 	}
 
 	// 5. hit the redirect (with a real browser UA — an empty one is treated
-	// as a bot and correctly excluded from click_count, see PLAN.md §10.2)
+	// as a bot and correctly excluded from click_count)
 	req := httptest.NewRequest("GET", "/hello1", nil)
 	req.RemoteAddr = "203.0.113.9:1111"
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0 Safari/537.36")

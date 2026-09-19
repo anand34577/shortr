@@ -10,7 +10,7 @@ import (
 )
 
 // APIError is a typed error handlers can return; respondError maps it to the
-// PLAN.md §17 error-code table. A plain (non-*APIError) error becomes a
+// error-code table. A plain (non-*APIError) error becomes a
 // generic 500 INTERNAL — nothing about it is ever shown to the client.
 type APIError struct {
 	Status  int

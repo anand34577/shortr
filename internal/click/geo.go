@@ -9,7 +9,7 @@ import (
 
 // GeoDB wraps an optional MaxMind mmdb lookup. Nil-safe: if no database is
 // configured, Lookup returns zero values and the feature is simply off (no
-// outbound network call is ever made — PLAN.md §3.1).
+// outbound network call is ever made).
 type GeoDB struct {
 	mu   sync.RWMutex
 	db   *maxminddb.Reader
@@ -39,7 +39,7 @@ func (g *GeoDB) Close() {
 }
 
 // Reload re-opens the mmdb file, picking up an admin-provided update without
-// a restart (PLAN.md §24.2 "GeoIP file updated on disk").
+// a restart.
 func (g *GeoDB) Reload() error {
 	if g.path == "" {
 		return nil

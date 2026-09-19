@@ -1,6 +1,6 @@
 // Package ulid generates 26-char, lexicographically sortable, unique ids
 // (Crockford base32 timestamp(48 bit ms) + randomness(80 bit)).
-// ponytail: hand-rolled instead of github.com/oklog/ulid — ~40 lines, no dep.
+// hand-rolled instead of github.com/oklog/ulid — ~40 lines, no dep.
 package ulid
 
 import (

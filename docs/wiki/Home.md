@@ -5,10 +5,8 @@ Docker image) with an embedded React admin UI, SQLite or PostgreSQL storage,
 real click analytics, local/OIDC auth, and optional email/push notifications.
 No third-party SaaS dependency is ever required.
 
-This wiki is the operator- and integrator-facing companion to the top-level
-[README](../../README.md) (quick start) and [PLAN.md](../../PLAN.md) (the
-full design document: data model, every API endpoint, validation rule, error
-code, and edge case).
+This wiki covers running and integrating Shortr. For a quick start, see the
+[README](https://github.com/anand34577/shortr#readme).
 
 ## Pages
 

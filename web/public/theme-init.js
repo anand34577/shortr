@@ -1,6 +1,6 @@
 // Runs before React mounts to avoid a flash of the wrong theme. Kept as an
 // external file (not inline) so it can run under a strict CSP with no
-// 'unsafe-inline' script-src (PLAN.md §18).
+// 'unsafe-inline' script-src.
 (function () {
   try {
     var stored = localStorage.getItem('shortr-theme');

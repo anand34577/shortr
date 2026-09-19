@@ -107,7 +107,7 @@ func (s *Server) requireAuth(h func(w http.ResponseWriter, r *http.Request, u *s
 
 // requireAdmin wraps an API handler that needs an authenticated admin.
 // requireSession is requireAuth restricted to browser sessions: API keys may
-// not manage keys, passwords or sessions (PLAN.md §13.2).
+// not manage keys, passwords or sessions.
 func (s *Server) requireSession(h func(w http.ResponseWriter, r *http.Request, u *store.User)) http.HandlerFunc {
 	return s.requireAuth(func(w http.ResponseWriter, r *http.Request, u *store.User) {
 		if apiKeyFromContext(r.Context()) != nil {
@@ -139,7 +139,7 @@ func (s *Server) requireAdmin(h func(w http.ResponseWriter, r *http.Request, u *
 
 // requireScope additionally checks that an API-key-authenticated request
 // carries the given scope; session-authenticated requests implicitly have
-// every scope their role allows (PLAN.md §11.3).
+// every scope their role allows.
 func (s *Server) requireScope(scope string, h func(w http.ResponseWriter, r *http.Request, u *store.User)) http.HandlerFunc {
 	return s.requireAuth(func(w http.ResponseWriter, r *http.Request, u *store.User) {
 		if key := apiKeyFromContext(r.Context()); key != nil {
@@ -162,7 +162,7 @@ func hasScope(scopes []string, want string) bool {
 }
 
 // csrfMiddleware enforces the double-submit header + Origin check for
-// session-cookie-authenticated mutating requests (PLAN.md §11.4). API-key
+// session-cookie-authenticated mutating requests. API-key
 // (Bearer) requests carry no cookie and are exempt.
 func (s *Server) csrfMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

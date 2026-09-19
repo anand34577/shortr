@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-// Mirrors PLAN.md §16 (server is authoritative; this is UX-only validation).
+// The server is authoritative; this is UX-only validation.
 
 const PRIVATE_HOST_RE =
   /^(localhost|.*\.local|.*\.internal|127(?:\.\d{1,3}){3}|10(?:\.\d{1,3}){3}|192\.168(?:\.\d{1,3}){2}|172\.(1[6-9]|2\d|3[0-1])(?:\.\d{1,3}){2}|0\.0\.0\.0|::1)$/i;

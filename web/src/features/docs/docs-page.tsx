@@ -62,8 +62,7 @@ export default function DocsPage() {
             <Skeleton className="h-64 w-full" />
           ) : entries.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              OpenAPI spec isn't available yet. See <code className="font-mono">docs/openapi.yaml</code> in the repository, or PLAN.md §13
-              for the full endpoint contract.
+              The OpenAPI spec could not be loaded.
             </p>
           ) : (
             <ul className="flex flex-col divide-y divide-border">

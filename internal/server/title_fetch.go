@@ -18,8 +18,8 @@ var titleRe = regexp.MustCompile(`(?is)<title[^>]*>(.*?)</title>`)
 // SSRF-guarded: DNS resolution happens inside DialContext so we check the
 // IP actually being connected to (defeats DNS-rebinding), not just the
 // hostname string; redirects are followed up to 3 times, each re-checked;
-// only a bounded amount of text/html is read (PLAN.md §18 "SSRF (title
-// fetch)"). Best-effort: any failure returns empty strings, never an error
+// only a bounded amount of text/html is read.
+// Best-effort: any failure returns empty strings, never an error
 // to the caller — this must never block link creation.
 func fetchTitle(ctx context.Context, rawURL string, allowPrivate bool) (title, finalURL string) {
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)

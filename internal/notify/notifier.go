@@ -69,7 +69,7 @@ func (k Kind) priority() gotifyPriority {
 }
 
 // Prefs is a user's per-kind channel opt-ins, stored as JSON in the
-// settings table under key "notify_prefs:<userID>" (ponytail: reuse the
+// settings table under key "notify_prefs:<userID>" (reuse the
 // existing settings table instead of a new one-row-per-user table).
 type Prefs struct {
 	Email  map[string]bool `json:"email"`
@@ -121,7 +121,7 @@ func SavePrefs(ctx context.Context, st *store.Store, userID string, p Prefs) err
 // Notifier fans a single event out to in-app storage, email, and Gotify per
 // the recipient's preferences and the admin's global toggles. Every send is
 // best-effort and logged; a channel failure never propagates to the caller
-// (PLAN.md: notifications must never affect core link-shortening function).
+//.
 type Notifier struct {
 	store  *store.Store
 	smtp   *SMTPSender
