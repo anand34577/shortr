@@ -133,6 +133,25 @@ func (s *Store) DeleteUser(ctx context.Context, id string) error {
 	return err
 }
 
+// ListActiveAdmins returns all active admin users — used to fan out
+// broadcast notifications (new user registered, backup failed, etc).
+func (s *Store) ListActiveAdmins(ctx context.Context) ([]*User, error) {
+	rows, err := s.query(ctx, `SELECT `+userCols+` FROM users WHERE role = 'admin' AND status = 'active'`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*User
+	for rows.Next() {
+		u, err := s.userFromRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, u)
+	}
+	return out, rows.Err()
+}
+
 func (s *Store) ListUsers(ctx context.Context, cursor string, limit int) ([]*User, string, error) {
 	if limit <= 0 || limit > 100 {
 		limit = 25
