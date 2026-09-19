@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"sync"
 	"time"
 
 	"shortr/internal/store"
@@ -47,8 +46,8 @@ type Writer struct {
 	metrics Metrics
 	log     *slog.Logger
 
-	ch chan Event
-	wg sync.WaitGroup
+	ch   chan Event
+	done chan struct{}
 }
 
 func NewWriter(st *store.Store, geo *GeoDB, cfg WriterConfig, m Metrics, log *slog.Logger) *Writer {
@@ -61,7 +60,8 @@ func NewWriter(st *store.Store, geo *GeoDB, cfg WriterConfig, m Metrics, log *sl
 	}
 	return &Writer{
 		cfg: cfg, store: st, geo: geo, metrics: m, log: log,
-		ch: make(chan Event, cfg.QueueSize),
+		ch:   make(chan Event, cfg.QueueSize),
+		done: make(chan struct{}),
 	}
 }
 
@@ -79,8 +79,11 @@ func (w *Writer) Enqueue(ev Event) bool {
 }
 
 // Run drains events until ctx is cancelled, then flushes whatever remains
-// (bounded by the caller's shutdown timeout) and returns.
+// (bounded by the caller's shutdown timeout) and returns. Callers that need
+// to know when the final flush has actually landed (e.g. graceful shutdown)
+// should wait on Done() rather than sleeping a fixed duration.
 func (w *Writer) Run(ctx context.Context) {
+	defer close(w.done)
 	if w.cfg.SpoolDir != "" {
 		w.replaySpool(ctx)
 	}
@@ -103,7 +106,9 @@ func (w *Writer) Run(ctx context.Context) {
 				flush()
 				return
 			}
-			batch = append(batch, w.enrich(ev))
+			if c := w.safeEnrich(ev); c != nil {
+				batch = append(batch, c)
+			}
 			w.metrics.SetQueueDepth(len(w.ch))
 			if len(batch) >= w.cfg.BatchSize {
 				flush()
@@ -114,8 +119,14 @@ func (w *Writer) Run(ctx context.Context) {
 			// drain remaining buffered events (best-effort, non-blocking) then flush
 			for {
 				select {
-				case ev := <-w.ch:
-					batch = append(batch, w.enrich(ev))
+				case ev, ok := <-w.ch:
+					if !ok { // closed and drained: stop, don't spin on zero values
+						flush()
+						return
+					}
+					if c := w.safeEnrich(ev); c != nil {
+						batch = append(batch, c)
+					}
 				default:
 					flush()
 					return
@@ -127,6 +138,25 @@ func (w *Writer) Run(ctx context.Context) {
 
 // Close signals no more events will be enqueued; Run will flush and return.
 func (w *Writer) Close() { close(w.ch) }
+
+// Done is closed once Run has fully returned (final flush landed or spooled).
+// Callers doing a graceful shutdown should wait on this instead of sleeping
+// a fixed duration, which can cut a slow flush short and lose events.
+func (w *Writer) Done() <-chan struct{} { return w.done }
+
+// safeEnrich isolates a panic in enrich (malformed GeoIP record, UA-parse
+// edge case, ...) to a single event instead of killing the writer goroutine
+// forever, which would otherwise silently drop every click from then on.
+func (w *Writer) safeEnrich(ev Event) (c *store.Click) {
+	defer func() {
+		if rec := recover(); rec != nil {
+			w.metrics.IncClicksDropped(1)
+			w.log.Error("panic enriching click event; dropping event", "panic", rec, "link_id", ev.LinkID)
+			c = nil
+		}
+	}()
+	return w.enrich(ev)
+}
 
 func (w *Writer) enrich(ev Event) *store.Click {
 	geo := w.geo.Lookup(ev.RawIP) // must run on the raw IP, before anonymisation

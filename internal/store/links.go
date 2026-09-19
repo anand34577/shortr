@@ -286,6 +286,20 @@ func (s *Store) CountLinksForUser(ctx context.Context, userID string) (int, erro
 	return n, err
 }
 
+// CountActiveLinks reports active, non-deleted links — scoped to userID if
+// non-empty, else across all users (admin "all" view). Feeds the dashboard
+// "Active links" stat tile.
+func (s *Store) CountActiveLinks(ctx context.Context, userID string) (int, error) {
+	var n int
+	var err error
+	if userID != "" {
+		err = s.queryRow(ctx, `SELECT count(*) FROM links WHERE user_id = ? AND deleted_at IS NULL AND status = 'active'`, userID).Scan(&n)
+	} else {
+		err = s.queryRow(ctx, `SELECT count(*) FROM links WHERE deleted_at IS NULL AND status = 'active'`).Scan(&n)
+	}
+	return n, err
+}
+
 func (s *Store) ListExpiringLinks(ctx context.Context, before time.Time) ([]*Link, error) {
 	rows, err := s.query(ctx, `SELECT `+linkCols+` FROM links WHERE deleted_at IS NULL AND status='active' AND expires_at IS NOT NULL AND expires_at < ? AND expires_at > ?`,
 		toMillis(before), toMillis(time.Now()))

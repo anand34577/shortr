@@ -18,7 +18,7 @@ type errorBody struct {
 	Code      string            `json:"code"`
 	Message   string            `json:"message"`
 	Fields    map[string]string `json:"fields,omitempty"`
-	RequestID string            `json:"request_id,omitempty"`
+	RequestID string            `json:"requestId,omitempty"`
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
@@ -61,7 +61,7 @@ func respondJSON(w http.ResponseWriter, status int, v any) {
 
 type listEnvelope[T any] struct {
 	Items      []T    `json:"items"`
-	NextCursor string `json:"next_cursor,omitempty"`
+	NextCursor string `json:"nextCursor,omitempty"`
 }
 
 func respondList[T any](w http.ResponseWriter, items []T, nextCursor string) {
@@ -85,7 +85,8 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, maxBytes int64, dst any)
 		if errors.As(err, &maxErr) {
 			return ErrPayloadTooLarge
 		}
-		return NewAPIError(http.StatusBadRequest, "BAD_REQUEST", "malformed JSON: "+err.Error())
+		slog.Warn("malformed JSON body", "path", r.URL.Path, "error", err)
+		return NewAPIError(http.StatusBadRequest, "BAD_REQUEST", "malformed JSON")
 	}
 	return nil
 }

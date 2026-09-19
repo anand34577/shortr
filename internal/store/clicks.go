@@ -56,6 +56,52 @@ type ClickFilter struct {
 	Limit  int
 }
 
+// RecentActivityRow is one row of the dashboard's live activity feed — a
+// click joined with its link's code (for display/linking), scoped to a
+// user's own links unless userID is "" (admin "all" view).
+type RecentActivityRow struct {
+	ClickID      int64
+	LinkID       string
+	Code         string
+	Country      string
+	Device       string
+	TS           time.Time
+	ReferrerHost string
+}
+
+func (s *Store) ListRecentActivity(ctx context.Context, userID string, limit int) ([]RecentActivityRow, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 25
+	}
+	q := `SELECT c.id, c.link_id, l.code, c.country, c.device, c.ts, c.referrer_host
+		FROM clicks c JOIN links l ON l.id = c.link_id
+		WHERE c.is_bot = 0`
+	args := []any{}
+	if userID != "" {
+		q += ` AND l.user_id = ?`
+		args = append(args, userID)
+	}
+	q += ` ORDER BY c.ts DESC, c.id DESC LIMIT ?`
+	args = append(args, limit)
+
+	rows, err := s.query(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []RecentActivityRow
+	for rows.Next() {
+		var row RecentActivityRow
+		var tsMS int64
+		if err := rows.Scan(&row.ClickID, &row.LinkID, &row.Code, &row.Country, &row.Device, &tsMS, &row.ReferrerHost); err != nil {
+			return nil, err
+		}
+		row.TS = fromMillis(tsMS)
+		out = append(out, row)
+	}
+	return out, rows.Err()
+}
+
 func (s *Store) ListClicks(ctx context.Context, f ClickFilter) ([]*Click, string, error) {
 	limit := f.Limit
 	if limit <= 0 || limit > 200 {
@@ -131,9 +177,10 @@ func scanClick(row interface{ Scan(...any) error }) (*Click, error) {
 
 // TimeSeriesPoint is one bucket of the clicks-over-time chart.
 type TimeSeriesPoint struct {
-	Bucket string // formatted per bucket size by caller
-	Clicks int64
-	Bots   int64
+	Bucket  string // formatted per bucket size by caller
+	Clicks  int64
+	Bots    int64
+	Uniques int64
 }
 
 // ClicksSeriesRaw buckets raw clicks by UTC day (bucket=day/week/month->day
@@ -148,48 +195,7 @@ func (s *Store) ClicksSeriesRaw(ctx context.Context, linkID string, from, to tim
 	}
 	where = append(where, "ts >= ?", "ts < ?")
 	args = append(args, toMillis(from), toMillis(to))
-
-	// bucket key computed in Go from ts (portable across sqlite/postgres)
-	rows, err := s.query(ctx, `SELECT ts, is_bot FROM clicks WHERE `+strings.Join(where, " AND "), args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	buckets := map[string]*TimeSeriesPoint{}
-	var order []string
-	for rows.Next() {
-		var tsMS int64
-		var isBot int
-		if err := rows.Scan(&tsMS, &isBot); err != nil {
-			return nil, err
-		}
-		t := fromMillis(tsMS).UTC()
-		key := t.Format("2006-01-02")
-		if hourly {
-			key = t.Format("2006-01-02T15")
-		}
-		p, ok := buckets[key]
-		if !ok {
-			p = &TimeSeriesPoint{Bucket: key}
-			buckets[key] = p
-			order = append(order, key)
-		}
-		if isBot != 0 {
-			p.Bots++
-		} else {
-			p.Clicks++
-		}
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	sortStrings(order)
-	out := make([]TimeSeriesPoint, 0, len(order))
-	for _, k := range order {
-		out = append(out, *buckets[k])
-	}
-	return out, nil
+	return s.clicksSeriesRaw(ctx, strings.Join(where, " AND "), args, hourly)
 }
 
 // The ForUser variants below scope a query to one user's own links via a
@@ -199,44 +205,59 @@ func (s *Store) ClicksSeriesRaw(ctx context.Context, linkID string, from, to tim
 // link-scoped versions above, to avoid disturbing their existing call sites.
 
 func (s *Store) ClicksSeriesRawForUser(ctx context.Context, userID string, from, to time.Time, hourly bool) ([]TimeSeriesPoint, error) {
-	rows, err := s.query(ctx, `SELECT ts, is_bot FROM clicks WHERE ts >= ? AND ts < ? AND link_id IN (SELECT id FROM links WHERE user_id = ?)`,
-		toMillis(from), toMillis(to), userID)
+	where := "ts >= ? AND ts < ? AND link_id IN (SELECT id FROM links WHERE user_id = ?)"
+	return s.clicksSeriesRaw(ctx, where, []any{toMillis(from), toMillis(to), userID}, hourly)
+}
+
+// clicksSeriesRaw is the shared implementation both public variants route
+// through: buckets clicks by UTC day/hour, counting clicks, bots, and
+// per-bucket unique IPs (used for the dashboard "uniques" line — see
+// PLAN.md §10.3, an approximation under IP_MODE=anonymize).
+//
+// Bucketing and aggregation both happen in SQL (dialect-specific date
+// truncation) rather than by scanning every raw row into Go, so a link with
+// millions of clicks over a wide date range doesn't have to load its entire
+// click history into application memory just to draw a chart.
+func (s *Store) clicksSeriesRaw(ctx context.Context, where string, args []any, hourly bool) ([]TimeSeriesPoint, error) {
+	var bucketExpr string
+	switch s.Driver {
+	case "postgres":
+		if hourly {
+			bucketExpr = `to_char(to_timestamp(ts / 1000.0) AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24')`
+		} else {
+			bucketExpr = `to_char(to_timestamp(ts / 1000.0) AT TIME ZONE 'UTC', 'YYYY-MM-DD')`
+		}
+	default: // sqlite
+		if hourly {
+			bucketExpr = `strftime('%Y-%m-%dT%H', ts / 1000, 'unixepoch')`
+		} else {
+			bucketExpr = `strftime('%Y-%m-%d', ts / 1000, 'unixepoch')`
+		}
+	}
+
+	q := `SELECT ` + bucketExpr + ` AS bucket,
+			SUM(CASE WHEN is_bot = 0 THEN 1 ELSE 0 END) AS clicks,
+			SUM(CASE WHEN is_bot != 0 THEN 1 ELSE 0 END) AS bots,
+			COUNT(DISTINCT CASE WHEN is_bot = 0 THEN ip END) AS uniques
+		FROM clicks WHERE ` + where + `
+		GROUP BY bucket ORDER BY bucket`
+
+	rows, err := s.query(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	buckets := map[string]*TimeSeriesPoint{}
-	var order []string
+
+	var out []TimeSeriesPoint
 	for rows.Next() {
-		var tsMS int64
-		var isBot int
-		if err := rows.Scan(&tsMS, &isBot); err != nil {
+		var p TimeSeriesPoint
+		if err := rows.Scan(&p.Bucket, &p.Clicks, &p.Bots, &p.Uniques); err != nil {
 			return nil, err
 		}
-		t := fromMillis(tsMS).UTC()
-		key := t.Format("2006-01-02")
-		if hourly {
-			key = t.Format("2006-01-02T15")
-		}
-		p, ok := buckets[key]
-		if !ok {
-			p = &TimeSeriesPoint{Bucket: key}
-			buckets[key] = p
-			order = append(order, key)
-		}
-		if isBot != 0 {
-			p.Bots++
-		} else {
-			p.Clicks++
-		}
+		out = append(out, p)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
-	}
-	sortStrings(order)
-	out := make([]TimeSeriesPoint, 0, len(order))
-	for _, k := range order {
-		out = append(out, *buckets[k])
 	}
 	return out, nil
 }
@@ -283,14 +304,6 @@ func (s *Store) ClicksBreakdownForUser(ctx context.Context, userID, dim string, 
 		out = append(out, r)
 	}
 	return out, rows.Err()
-}
-
-func sortStrings(s []string) {
-	for i := 1; i < len(s); i++ {
-		for j := i; j > 0 && s[j-1] > s[j]; j-- {
-			s[j-1], s[j] = s[j], s[j-1]
-		}
-	}
 }
 
 // BreakdownRow is one row of a dimension breakdown (country/device/os/browser/referrer_host).

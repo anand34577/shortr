@@ -102,13 +102,13 @@ func TestSetupLoginCreateRedirectStats(t *testing.T) {
 	}
 
 	// 3. create a link without csrf token -> should be rejected
-	rec = env.do(t, "POST", "/api/v1/links", map[string]string{"target_url": "https://example.com/hello"}, cookies, "")
+	rec = env.do(t, "POST", "/api/v1/links", map[string]string{"targetUrl": "https://example.com/hello"}, cookies, "")
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("expected CSRF rejection, got status=%d body=%s", rec.Code, rec.Body.String())
 	}
 
 	// 4. create a link with csrf token -> success
-	rec = env.do(t, "POST", "/api/v1/links", map[string]string{"target_url": "https://example.com/hello", "code": "hello1"}, cookies, csrf)
+	rec = env.do(t, "POST", "/api/v1/links", map[string]string{"targetUrl": "https://example.com/hello", "code": "hello1"}, cookies, csrf)
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("create link: status=%d body=%s", rec.Code, rec.Body.String())
 	}
@@ -149,10 +149,10 @@ func TestSetupLoginCreateRedirectStats(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("stats: status=%d body=%s", rec.Code, rec.Body.String())
 	}
-	var stats statsResp
+	var stats linkStatsResp
 	json.Unmarshal(rec.Body.Bytes(), &stats) //nolint:errcheck
-	if stats.Total != 1 {
-		t.Fatalf("expected total=1, got %d", stats.Total)
+	if stats.Totals.Clicks != 1 {
+		t.Fatalf("expected totals.clicks=1, got %d", stats.Totals.Clicks)
 	}
 }
 
@@ -196,7 +196,7 @@ func TestPrivateTargetRejected(t *testing.T) {
 	var me meDTO
 	json.Unmarshal(rec.Body.Bytes(), &me) //nolint:errcheck
 
-	rec = env.do(t, "POST", "/api/v1/links", map[string]string{"target_url": "http://169.254.169.254/latest/meta-data/"}, cookies, me.CSRFToken)
+	rec = env.do(t, "POST", "/api/v1/links", map[string]string{"targetUrl": "http://169.254.169.254/latest/meta-data/"}, cookies, me.CSRFToken)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected validation error for link-local target, got %d body=%s", rec.Code, rec.Body.String())
 	}

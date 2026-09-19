@@ -80,6 +80,23 @@ func (r *Registry) Set(name string, v int64, labels map[string]string) {
 	atomic.StoreInt64(p, v)
 }
 
+// Get reads back a counter or gauge's current value (0 if never recorded) —
+// used by the admin System page to report live queue depth / dropped
+// clicks without scraping our own /metrics text output.
+func (r *Registry) Get(name string, labels map[string]string) int64 {
+	key := counterKey{name, labelStr(labels)}
+	r.mu.Lock()
+	p, ok := r.counters[key]
+	if !ok {
+		p, ok = r.gauges[key]
+	}
+	r.mu.Unlock()
+	if !ok {
+		return 0
+	}
+	return atomic.LoadInt64(p)
+}
+
 // --- convenience wrappers matching the click.Metrics interface ----------
 
 func (r *Registry) IncClicksWritten(n int64) { r.Inc("shortr_clicks_written_total", n, nil) }

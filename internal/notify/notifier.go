@@ -24,6 +24,38 @@ const (
 	KindAdminBroadcast  Kind = "admin.broadcast"
 )
 
+// AllKinds lists every kind a user can configure in Settings → Notifications.
+var AllKinds = []Kind{
+	KindUserRegistered, KindLinkExpiring, KindPasswordChanged, KindBackupFailed,
+}
+
+// ChannelsSettingPrefix is the settings key (plus user ID) holding the
+// per-kind channel list edited in the UI: {"<kind>": ["email","gotify","browser"]}.
+const ChannelsSettingPrefix = "notify_channels:"
+
+// channelOn reports whether the user's UI-managed preferences allow channel
+// for kind. A kind the user never touched defaults to on for every channel.
+func channelOn(ctx context.Context, st *store.Store, userID string, kind Kind, channel string) bool {
+	v, ok, err := st.GetSetting(ctx, ChannelsSettingPrefix+userID)
+	if err != nil || !ok {
+		return true
+	}
+	var m map[string][]string
+	if json.Unmarshal([]byte(v), &m) != nil {
+		return true
+	}
+	chans, set := m[string(kind)]
+	if !set {
+		return true
+	}
+	for _, c := range chans {
+		if c == channel {
+			return true
+		}
+	}
+	return false
+}
+
 // DefaultKindPriority maps a kind to a Gotify priority / email urgency.
 func (k Kind) priority() gotifyPriority {
 	switch k {
@@ -42,7 +74,7 @@ func (k Kind) priority() gotifyPriority {
 type Prefs struct {
 	Email  map[string]bool `json:"email"`
 	Gotify map[string]bool `json:"gotify"`
-	InApp  map[string]bool `json:"in_app"`
+	InApp  map[string]bool `json:"inApp"`
 }
 
 func DefaultPrefs() Prefs {
@@ -119,14 +151,14 @@ func (n *Notifier) NotifyUser(ctx context.Context, userID, userEmail string, kin
 
 	prefs := LoadPrefs(ctx, n.store, userID)
 
-	if n.smtp != nil && n.smtp.Enabled() && userEmail != "" && prefs.enabled(prefs.Email, kind) {
+	if n.smtp != nil && n.smtp.Enabled() && userEmail != "" && prefs.enabled(prefs.Email, kind) && channelOn(ctx, n.store, userID, kind, "email") {
 		go func() {
 			if err := n.smtp.Send(userEmail, "[Shortr] "+title, body); err != nil {
 				n.log.Warn("email notification failed", "kind", kind, "error", err)
 			}
 		}()
 	}
-	if n.gotify != nil && n.gotify.Enabled() && prefs.enabled(prefs.Gotify, kind) {
+	if n.gotify != nil && n.gotify.Enabled() && prefs.enabled(prefs.Gotify, kind) && channelOn(ctx, n.store, userID, kind, "gotify") {
 		go func() {
 			if err := n.gotify.Send(context.Background(), title, body, kind.priority()); err != nil {
 				n.log.Warn("gotify notification failed", "kind", kind, "error", err)
@@ -151,7 +183,7 @@ func (n *Notifier) NotifyAdmins(ctx context.Context, kind Kind, title, body stri
 	}
 	for _, a := range admins {
 		prefs := LoadPrefs(ctx, n.store, a.ID)
-		if n.smtp != nil && n.smtp.Enabled() && prefs.enabled(prefs.Email, kind) {
+		if n.smtp != nil && n.smtp.Enabled() && prefs.enabled(prefs.Email, kind) && channelOn(ctx, n.store, a.ID, kind, "email") {
 			go func(email string) {
 				if err := n.smtp.Send(email, "[Shortr] "+title, body); err != nil {
 					n.log.Warn("admin email notification failed", "error", err)

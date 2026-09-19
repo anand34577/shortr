@@ -76,7 +76,9 @@ func Open(driver, dsn, dataDir string, maxConns int) (*Store, error) {
 			maxConns = 16
 		}
 		db.SetMaxOpenConns(maxConns)
+		db.SetMaxIdleConns(maxConns)
 		db.SetConnMaxLifetime(30 * time.Minute)
+		db.SetConnMaxIdleTime(5 * time.Minute)
 		s.write, s.read = db, db
 	default:
 		return nil, fmt.Errorf("unknown db driver %q", driver)
@@ -135,6 +137,23 @@ func (s *Store) Close() error {
 
 func (s *Store) Ping(ctx context.Context) error {
 	return s.read.PingContext(ctx)
+}
+
+// DBSizeBytes reports the on-disk database size for the admin System page.
+// SQLite: the underlying file's size on disk. Postgres: pg_database_size().
+func (s *Store) DBSizeBytes(ctx context.Context, sqlitePath string) int64 {
+	if s.Driver == "sqlite" {
+		info, err := os.Stat(sqlitePath)
+		if err != nil {
+			return 0
+		}
+		return info.Size()
+	}
+	var n int64
+	if err := s.read.QueryRowContext(ctx, "SELECT pg_database_size(current_database())").Scan(&n); err != nil {
+		return 0
+	}
+	return n
 }
 
 // BackupSQLite writes a consistent point-in-time snapshot to destPath via

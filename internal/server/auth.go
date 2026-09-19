@@ -14,13 +14,13 @@ import (
 )
 
 type authStatusResp struct {
-	SetupRequired   bool   `json:"setup_required"`
-	OIDCEnabled     bool   `json:"oidc_enabled"`
-	OIDCReady       bool   `json:"oidc_ready"`
-	OIDCDisplayName string `json:"oidc_display_name"`
-	LocalLogin      bool   `json:"local_login"`
+	SetupRequired   bool   `json:"setupRequired"`
+	OIDCEnabled     bool   `json:"oidcEnabled"`
+	OIDCReady       bool   `json:"oidcReady"`
+	OIDCDisplayName string `json:"oidcDisplayName"`
+	LocalLogin      bool   `json:"localLogin"`
 	Registration    string `json:"registration"`
-	SiteName        string `json:"site_name"`
+	SiteName        string `json:"siteName"`
 }
 
 func (s *Server) handleAuthStatus(w http.ResponseWriter, r *http.Request) {
@@ -31,7 +31,7 @@ func (s *Server) handleAuthStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	resp := authStatusResp{
 		SetupRequired: n == 0, OIDCEnabled: s.cfg.OIDCEnabled, OIDCDisplayName: s.cfg.OIDCDisplayName,
-		LocalLogin: s.cfg.OIDCLocalLogin || !s.cfg.OIDCEnabled, Registration: s.cfg.Registration, SiteName: siteName,
+		LocalLogin: s.cfg.OIDCLocalLogin || !s.cfg.OIDCEnabled, Registration: s.cfg.Registration, SiteName: s.siteNameOrDefault(r.Context()),
 	}
 	if s.oidc != nil {
 		resp.OIDCReady = s.oidc.Ready(r.Context())
@@ -39,10 +39,33 @@ func (s *Server) handleAuthStatus(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, resp)
 }
 
+// siteNameOrDefault reads the admin-configurable branding name (set via
+// setup or Settings → General), falling back to the static default. Not
+// used on the redirect/public-page hot path — see pages.go.
+func (s *Server) siteNameOrDefault(ctx context.Context) string {
+	v, ok, err := s.store.GetSetting(ctx, "site_name")
+	if err != nil || !ok {
+		return siteName
+	}
+	var name string
+	if err := json.Unmarshal([]byte(v), &name); err != nil || name == "" {
+		return siteName
+	}
+	return name
+}
+
 type setupReq struct {
 	Email    string `json:"email"`
 	Password string `json:"password"`
 	Name     string `json:"name"`
+	// SiteName is optional branding shown on the dashboard and public pages;
+	// stored in the settings table. BaseURL is accepted for the wizard's UX
+	// (it round-trips the server-computed origin back for confirmation) but
+	// is intentionally NOT applied here — SHORTR_BASE_URL is config-driven
+	// and authoritative (PLAN.md §18 "no Host-header injection"), so setup
+	// only tells the admin to update the env var if it doesn't match.
+	SiteName string `json:"siteName"`
+	BaseURL  string `json:"baseUrl"`
 }
 
 func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
@@ -85,9 +108,17 @@ func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
 		respondError(w, r, err)
 		return
 	}
+	if name := strings.TrimSpace(req.SiteName); name != "" {
+		if b, mErr := json.Marshal(name); mErr == nil {
+			_ = s.store.SetSetting(r.Context(), "site_name", string(b), u.ID)
+		}
+	}
 	s.audit(r, u.ID, "user.setup", "user", u.ID, nil)
-	s.startSession(w, r, u)
-	respondJSON(w, http.StatusCreated, toUserDTO(u))
+	sess, ok := s.startSession(w, r, u)
+	if !ok {
+		return
+	}
+	respondJSON(w, http.StatusCreated, s.meDTOWithSession(u, sess))
 }
 
 type loginReq struct {
@@ -142,8 +173,11 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	_ = s.store.UpdateUser(r.Context(), u)
 
 	s.audit(r, u.ID, "user.login", "user", u.ID, nil)
-	s.startSession(w, r, u)
-	respondJSON(w, http.StatusOK, toUserDTO(u))
+	sess, ok := s.startSession(w, r, u)
+	if !ok {
+		return
+	}
+	respondJSON(w, http.StatusOK, s.meDTOWithSession(u, sess))
 }
 
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
@@ -201,32 +235,54 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 	if s.notifier != nil {
 		s.notifier.NotifyAdmins(r.Context(), notify.KindUserRegistered, "New user registered", u.Email+" just created an account.", map[string]any{"user_id": u.ID})
 	}
-	s.startSession(w, r, u)
-	respondJSON(w, http.StatusCreated, toUserDTO(u))
+	sess, ok := s.startSession(w, r, u)
+	if !ok {
+		return
+	}
+	respondJSON(w, http.StatusCreated, s.meDTOWithSession(u, sess))
 }
 
 // --- session helpers -----------------------------------------------------
 
-func (s *Server) startSession(w http.ResponseWriter, r *http.Request, u *store.User) {
+// startSession creates a session, sets the cookie, and returns the session
+// record so callers can build an immediate meDTO response with its CSRF
+// token — sessionFromContext(r.Context()) is NOT populated yet at this
+// point in the request (withIdentityMiddleware already ran before this
+// handler, when the request carried no session cookie), so callers must use
+// the returned session rather than the request context. Returns ok=false
+// if it already wrote an error response.
+func (s *Server) startSession(w http.ResponseWriter, r *http.Request, u *store.User) (sess *store.Session, ok bool) {
 	raw, hash, err := auth.NewOpaqueToken(32)
 	if err != nil {
 		respondError(w, r, err)
-		return
+		return nil, false
 	}
 	csrfRaw, _, _ := auth.NewOpaqueToken(24)
 	ip := clientIPFromContext(r.Context())
-	sess := &store.Session{
+	sess = &store.Session{
 		ID: hash, UserID: u.ID, CSRFToken: csrfRaw, IP: ipStrOrEmpty(ip), UserAgent: truncateStr(r.UserAgent(), 300),
 		ExpiresAt: time.Now().Add(s.cfg.SessionTTL),
 	}
 	if err := s.store.CreateSession(r.Context(), sess); err != nil {
 		respondError(w, r, err)
-		return
+		return nil, false
 	}
 	http.SetCookie(w, &http.Cookie{
 		Name: sessionCookieName, Value: raw, Path: "/", HttpOnly: true, Secure: s.cfg.CookieSecure,
 		SameSite: http.SameSiteLaxMode, Expires: sess.ExpiresAt,
 	})
+	return sess, true
+}
+
+// meDTOWithSession builds a meDTO using an explicit session (see
+// startSession's doc comment for why this can't just call s.toMeDTO, which
+// reads the session from context).
+func (s *Server) meDTOWithSession(u *store.User, sess *store.Session) meDTO {
+	caps := []string{"links:read", "links:write", "stats:read"}
+	if u.IsAdmin() {
+		caps = append(caps, "admin")
+	}
+	return meDTO{userDTO: toUserDTO(u), CSRFToken: sess.CSRFToken, Capabilities: caps}
 }
 
 func truncateStr(s string, n int) string {

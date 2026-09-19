@@ -106,10 +106,31 @@ func (s *Server) requireAuth(h func(w http.ResponseWriter, r *http.Request, u *s
 }
 
 // requireAdmin wraps an API handler that needs an authenticated admin.
+// requireSession is requireAuth restricted to browser sessions: API keys may
+// not manage keys, passwords or sessions (PLAN.md §13.2).
+func (s *Server) requireSession(h func(w http.ResponseWriter, r *http.Request, u *store.User)) http.HandlerFunc {
+	return s.requireAuth(func(w http.ResponseWriter, r *http.Request, u *store.User) {
+		if apiKeyFromContext(r.Context()) != nil {
+			respondError(w, r, ErrForbidden)
+			return
+		}
+		h(w, r, u)
+	})
+}
+
+// requireAdmin wraps an API handler that needs an authenticated admin. When
+// the caller authenticated with an API key (not a session cookie), the key
+// must additionally carry the admin:* scope — otherwise a narrowly-scoped
+// key (e.g. links:read) belonging to an admin user would inherit full admin
+// power over every admin-only endpoint.
 func (s *Server) requireAdmin(h func(w http.ResponseWriter, r *http.Request, u *store.User)) http.HandlerFunc {
 	return s.requireAuth(func(w http.ResponseWriter, r *http.Request, u *store.User) {
 		if !u.IsAdmin() {
 			respondError(w, r, ErrForbidden)
+			return
+		}
+		if key := apiKeyFromContext(r.Context()); key != nil && !hasScope(key.Scopes, "admin:*") {
+			respondError(w, r, NewAPIError(http.StatusForbidden, "FORBIDDEN", "API key missing required scope: admin:*"))
 			return
 		}
 		h(w, r, u)

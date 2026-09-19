@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"sync"
 	"time"
 
 	"shortr/internal/auth"
@@ -35,9 +36,12 @@ type Server struct {
 	log       *slog.Logger
 	handler   http.Handler
 	http      *http.Server
-	spaFS     fs.FS // nil = SPA disabled (e.g. some tests)
+	sudoMu    sync.Mutex
+	sudoUntil map[string]time.Time // session ID -> end of re-auth window
+	spaFS     fs.FS                // nil = SPA disabled (e.g. some tests)
 	startTime time.Time
 	version   string
+	commit    string
 }
 
 type Deps struct {
@@ -51,6 +55,7 @@ type Deps struct {
 	Log         *slog.Logger
 	SPAFiles    fs.FS
 	Version     string
+	Commit      string
 }
 
 func New(d Deps) *Server {
@@ -63,7 +68,7 @@ func New(d Deps) *Server {
 		notifier: d.Notifier, oidc: d.OIDC, metrics: d.Metrics,
 		rlRedirect: ratelimit.New(rr), rlAPI: ratelimit.New(ra), rlAuth: ratelimit.New(rauth),
 		rlPassword: ratelimit.New(ratelimit.Rate{N: 5, Interval: time.Minute}),
-		log:        d.Log, spaFS: d.SPAFiles, startTime: time.Now(), version: d.Version,
+		log:        d.Log, spaFS: d.SPAFiles, startTime: time.Now(), version: d.Version, commit: d.Commit,
 	}
 	if s.log == nil {
 		s.log = slog.Default()

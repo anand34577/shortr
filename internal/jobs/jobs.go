@@ -8,6 +8,7 @@ import (
 	"context"
 	"log/slog"
 	"math/rand"
+	"sync"
 	"time"
 
 	"shortr/internal/notify"
@@ -18,6 +19,7 @@ type Runner struct {
 	store    *store.Store
 	notifier *notify.Notifier
 	log      *slog.Logger
+	wg       sync.WaitGroup
 
 	clickRetentionDays  int
 	rollupRetentionDays int
@@ -51,17 +53,33 @@ func New(c Config) *Runner {
 }
 
 // Run blocks, firing each job on its own ticker with a random jitter so they
-// don't all wake at once, until ctx is cancelled.
+// don't all wake at once, until ctx is cancelled. Run itself returns as soon
+// as every job goroutine has observed cancellation and returned, so callers
+// doing a graceful shutdown can safely assume no job is left running once
+// Run returns.
 func (r *Runner) Run(ctx context.Context) {
-	go r.loop(ctx, "session_gc", time.Hour, r.sessionGC)
-	go r.loop(ctx, "expiry_notice", 6*time.Hour, r.expiryNotices)
-	go r.loop(ctx, "soft_delete_purge", 24*time.Hour, r.purgeSoftDeleted)
-	go r.loop(ctx, "click_retention", 24*time.Hour, r.clickRetention)
-	go r.loop(ctx, "idempotency_gc", time.Hour, r.idempotencyGC)
-	if r.backupInterval > 0 && r.dbDriver == "sqlite" {
-		go r.loop(ctx, "backup", r.backupInterval, r.backup)
+	r.spawn(ctx, "session_gc", time.Hour, r.sessionGC)
+	r.spawn(ctx, "expiry_notice", 6*time.Hour, r.expiryNotices)
+	r.spawn(ctx, "soft_delete_purge", 24*time.Hour, r.purgeSoftDeleted)
+	r.spawn(ctx, "click_retention", 24*time.Hour, r.clickRetention)
+	r.spawn(ctx, "idempotency_gc", time.Hour, r.idempotencyGC)
+	if r.backupInterval > 0 {
+		if r.dbDriver == "sqlite" {
+			r.spawn(ctx, "backup", r.backupInterval, r.backup)
+		} else {
+			r.log.Warn("SHORTR_BACKUP_INTERVAL is set but the automatic backup job only supports sqlite; no backups will run", "db_driver", r.dbDriver)
+		}
 	}
 	<-ctx.Done()
+	r.wg.Wait()
+}
+
+func (r *Runner) spawn(ctx context.Context, name string, interval time.Duration, fn func(context.Context) error) {
+	r.wg.Add(1)
+	go func() {
+		defer r.wg.Done()
+		r.loop(ctx, name, interval, fn)
+	}()
 }
 
 func (r *Runner) loop(ctx context.Context, name string, interval time.Duration, fn func(context.Context) error) {
@@ -168,5 +186,9 @@ func (r *Runner) expiryNotices(ctx context.Context) error {
 }
 
 func (r *Runner) backup(ctx context.Context) error {
-	return r.doBackup(ctx)
+	err := r.doBackup(ctx)
+	if err != nil && r.notifier != nil {
+		r.notifier.NotifyAdmins(ctx, notify.KindBackupFailed, "Backup failed", err.Error(), nil)
+	}
+	return err
 }

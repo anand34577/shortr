@@ -19,6 +19,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	_ "time/tzdata" // IANA zones for ?tz= validation on Windows and scratch images
 
 	webdist "shortr"
 	"shortr/internal/auth"
@@ -148,6 +149,7 @@ func cmdServe() {
 		MaxURLLength: cfg.MaxURLLength, AllowPrivateTargets: cfg.AllowPrivateTargets, BlockedDomains: cfg.BlockedDomains,
 		DefaultRedirectStatus: cfg.DefaultRedirectCode, MaxLinksPerUser: cfg.MaxLinksPerUser,
 	})
+	linkSvc.SetMetrics(m)
 
 	var smtpSender *notify.SMTPSender
 	if cfg.SMTPEnabled {
@@ -187,7 +189,7 @@ func cmdServe() {
 
 	srv := server.New(server.Deps{
 		Config: cfg, Store: st, Links: linkSvc, ClickWriter: clickWriter, Notifier: notifier,
-		OIDC: oidcMgr, Metrics: m, Log: log, SPAFiles: spaFS, Version: version,
+		OIDC: oidcMgr, Metrics: m, Log: log, SPAFiles: spaFS, Version: version, Commit: commit,
 	})
 
 	jobsCtx, jobsCancel := context.WithCancel(context.Background())
@@ -196,7 +198,11 @@ func cmdServe() {
 		ClickRetentionDays: cfg.ClickRetentionDays, RollupRetentionDays: cfg.RollupRetentionDays,
 		BackupInterval: cfg.BackupInterval, BackupKeep: cfg.BackupKeep, DataDir: cfg.DataDir, DBDriver: cfg.DBDriver,
 	})
-	go jobRunner.Run(jobsCtx)
+	jobsDone := make(chan struct{})
+	go func() {
+		jobRunner.Run(jobsCtx)
+		close(jobsDone)
+	}()
 
 	errCh := make(chan error, 1)
 	go func() {
@@ -220,10 +226,23 @@ func cmdServe() {
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		log.Warn("graceful shutdown timed out", "error", err)
 	}
+
+	// Signal both background loops to stop, then wait for their in-flight
+	// work to actually finish (bounded by the same shutdown timeout) instead
+	// of a fixed sleep, which could cut a slow flush/job short and lose data.
 	clickWriter.Close()
-	<-time.After(300 * time.Millisecond) // let the writer's final flush land
-	clickCancel()
 	jobsCancel()
+	select {
+	case <-clickWriter.Done():
+	case <-shutdownCtx.Done():
+		log.Warn("click writer did not finish flushing before shutdown timeout")
+	}
+	select {
+	case <-jobsDone:
+	case <-shutdownCtx.Done():
+		log.Warn("background jobs did not finish before shutdown timeout")
+	}
+	clickCancel()
 	log.Info("shutdown complete")
 }
 

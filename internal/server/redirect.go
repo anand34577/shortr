@@ -65,11 +65,11 @@ func (s *Server) handleRedirect(w http.ResponseWriter, r *http.Request) {
 		s.metrics.IncRedirect("disabled")
 		return
 	case l.ExpiresAt != nil && l.ExpiresAt.Before(time.Now()):
-		s.renderPublic(w, http.StatusGone, "expired", nil)
+		s.renderPublic(w, http.StatusGone, "gone", nil)
 		s.metrics.IncRedirect("gone")
 		return
 	case l.MaxClicks != nil && l.ClickCount >= int64(*l.MaxClicks):
-		s.renderPublic(w, http.StatusGone, "expired", nil)
+		s.renderPublic(w, http.StatusGone, "gone", nil)
 		s.metrics.IncRedirect("gone")
 		return
 	}
@@ -79,6 +79,12 @@ func (s *Server) handleRedirect(w http.ResponseWriter, r *http.Request) {
 			s.renderPublic(w, http.StatusOK, "password", map[string]any{"Code": code})
 			return
 		}
+	}
+
+	if r.Method == http.MethodGet && l.MaxClicks != nil && !click.ParseUA(r.UserAgent()).IsBot && !s.links.ConsumeClick(l) {
+		s.renderPublic(w, http.StatusGone, "gone", nil)
+		s.metrics.IncRedirect("gone")
+		return
 	}
 
 	target := s.buildTargetURL(l, r)
@@ -190,8 +196,13 @@ func (s *Server) handlePasswordSubmit(w http.ResponseWriter, r *http.Request, co
 	}
 
 	l, err := s.links.ResolveForRedirect(r.Context(), code)
-	if err != nil || l.DeletedAt != nil || l.Status == "disabled" || !l.HasPassword() {
+	if err != nil || l.DeletedAt != nil || l.Status == "disabled" {
 		s.renderPublic(w, http.StatusNotFound, "not_found", nil)
+		return
+	}
+	if !l.HasPassword() {
+		w.Header().Set("Allow", "GET, HEAD, OPTIONS")
+		respondError(w, r, NewAPIError(http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed"))
 		return
 	}
 	if err := r.ParseForm(); err != nil {

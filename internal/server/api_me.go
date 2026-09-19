@@ -6,11 +6,23 @@ import (
 	"time"
 
 	"shortr/internal/auth"
+	"shortr/internal/notify"
 	"shortr/internal/store"
 	"shortr/internal/validate"
 )
 
 func (s *Server) handleMe(w http.ResponseWriter, r *http.Request, u *store.User) {
+	respondJSON(w, http.StatusOK, s.toMeDTO(r, u))
+}
+
+// toMeDTO builds the full "me" shape, including the CSRF token the SPA
+// needs for its next mutating request. Every endpoint that establishes a
+// session (setup/login/register — see auth.go) must return this, not a bare
+// userDTO: the frontend caches the response directly as its "me" query
+// result rather than re-fetching /api/v1/me, so a bare user object would
+// leave the client with no CSRF token until the next unrelated refetch,
+// making every write until then fail CSRF validation.
+func (s *Server) toMeDTO(r *http.Request, u *store.User) meDTO {
 	caps := []string{"links:read", "links:write", "stats:read"}
 	if u.IsAdmin() {
 		caps = append(caps, "admin")
@@ -19,7 +31,7 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request, u *store.User)
 	if sess := sessionFromContext(r.Context()); sess != nil {
 		csrf = sess.CSRFToken
 	}
-	respondJSON(w, http.StatusOK, meDTO{userDTO: toUserDTO(u), CSRFToken: csrf, Capabilities: caps})
+	return meDTO{userDTO: toUserDTO(u), CSRFToken: csrf, Capabilities: caps}
 }
 
 type patchMeReq struct {
@@ -117,6 +129,9 @@ func (s *Server) handlePutPassword(w http.ResponseWriter, r *http.Request, u *st
 	}
 	_ = s.store.DeleteSessionsForUserExcept(r.Context(), u.ID, keepID)
 	s.audit(r, u.ID, "user.password_changed", "user", u.ID, nil)
+	if s.notifier != nil {
+		s.notifier.NotifyUser(r.Context(), u.ID, u.Email, notify.KindPasswordChanged, "Password changed", "Your password was changed. If this wasn't you, contact an administrator.", nil)
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -129,7 +144,7 @@ func (s *Server) handleListMySessions(w http.ResponseWriter, r *http.Request, u 
 	cur := sessionFromContext(r.Context())
 	out := make([]sessionDTO, 0, len(sessions))
 	for _, sess := range sessions {
-		out = append(out, sessionDTO{ID: sess.ID, IP: sess.IP, UserAgent: sess.UserAgent, CreatedAt: sess.CreatedAt, LastSeenAt: sess.LastSeenAt, Current: cur != nil && cur.ID == sess.ID})
+		out = append(out, sessionDTO{ID: sess.ID, IP: sess.IP, UserAgent: sess.UserAgent, CreatedAt: sess.CreatedAt, ExpiresAt: sess.ExpiresAt, LastSeenAt: sess.LastSeenAt, Current: cur != nil && cur.ID == sess.ID})
 	}
 	respondList(w, out, "")
 }
@@ -216,6 +231,6 @@ func (s *Server) handleDeleteMe(w http.ResponseWriter, r *http.Request, u *store
 		respondError(w, r, err)
 		return
 	}
-	http.SetCookie(w, &http.Cookie{Name: sessionCookieName, Value: "", Path: "/", MaxAge: -1})
+	http.SetCookie(w, &http.Cookie{Name: sessionCookieName, Value: "", Path: "/", MaxAge: -1, HttpOnly: true, Secure: s.cfg.CookieSecure, SameSite: http.SameSiteLaxMode})
 	w.WriteHeader(http.StatusNoContent)
 }

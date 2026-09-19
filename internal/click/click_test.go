@@ -111,3 +111,80 @@ func TestWriterEnqueueFlushAndSpoolReplay(t *testing.T) {
 		t.Fatalf("expected click_count=5, got %d", got.ClickCount)
 	}
 }
+
+// TestWriterDoneSignalsAfterFlush ensures Done() only closes once Run has
+// actually returned (final flush landed), so a caller doing a graceful
+// shutdown never has to guess a fixed sleep duration.
+func TestWriterDoneSignalsAfterFlush(t *testing.T) {
+	dir := t.TempDir()
+	st, err := store.Open("sqlite", filepath.Join(dir, "test.db"), dir, 4)
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	defer st.Close()
+
+	l := &store.Link{Code: "donetest", TargetURL: "https://example.com"}
+	if err := st.CreateLink(context.Background(), l); err != nil {
+		t.Fatalf("create link: %v", err)
+	}
+
+	w := NewWriter(st, &GeoDB{}, WriterConfig{SpoolDir: filepath.Join(dir, "spool")}, nil, nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go w.Run(ctx)
+
+	select {
+	case <-w.Done():
+		t.Fatal("Done() closed before Close() was ever called")
+	case <-time.After(20 * time.Millisecond):
+	}
+
+	w.Enqueue(Event{LinkID: l.ID, TS: time.Now(), RawIP: net.ParseIP("1.2.3.4"), UserAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
+	w.Close()
+
+	select {
+	case <-w.Done():
+	case <-time.After(2 * time.Second):
+		t.Fatal("Done() never closed after Close()")
+	}
+
+	got, err := st.GetLinkByID(context.Background(), l.ID)
+	if err != nil || got.ClickCount != 1 {
+		t.Fatalf("expected the enqueued click to be flushed before Done(): count=%d err=%v", got.ClickCount, err)
+	}
+}
+
+// TestWriterSurvivesEnrichPanic verifies a panic while enriching one event
+// (e.g. a malformed record) drops only that event instead of killing the
+// writer goroutine and silently halting all future click recording.
+func TestWriterSurvivesEnrichPanic(t *testing.T) {
+	dir := t.TempDir()
+	st, err := store.Open("sqlite", filepath.Join(dir, "test.db"), dir, 4)
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	defer st.Close()
+
+	l := &store.Link{Code: "panictest", TargetURL: "https://example.com"}
+	if err := st.CreateLink(context.Background(), l); err != nil {
+		t.Fatalf("create link: %v", err)
+	}
+
+	w := NewWriter(st, &GeoDB{}, WriterConfig{FlushInterval: 10 * time.Millisecond}, nil, nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go w.Run(ctx)
+
+	// A nil RawIP would panic inside geo.Lookup/net.IP handling in a naive
+	// implementation; safeEnrich must isolate it either way.
+	w.Enqueue(Event{LinkID: l.ID, TS: time.Now(), RawIP: nil})
+	w.Enqueue(Event{LinkID: l.ID, TS: time.Now(), RawIP: net.ParseIP("5.6.7.8")})
+
+	time.Sleep(100 * time.Millisecond)
+	w.Close()
+	select {
+	case <-w.Done():
+	case <-time.After(2 * time.Second):
+		t.Fatal("writer goroutine did not exit cleanly after a panic")
+	}
+}

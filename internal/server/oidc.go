@@ -19,7 +19,7 @@ type oidcState struct {
 	Nonce      string `json:"nonce"`
 	Verifier   string `json:"verifier"`
 	Next       string `json:"next"`
-	LinkUserID string `json:"link_user_id,omitempty"`
+	LinkUserID string `json:"linkUserId,omitempty"`
 }
 
 func (s *Server) handleOIDCStart(w http.ResponseWriter, r *http.Request) {
@@ -276,5 +276,10 @@ func (s *Server) hasSudo(r *http.Request) bool {
 	if sess == nil {
 		return false
 	}
-	return time.Since(sess.CreatedAt) < 10*time.Minute
+	if time.Since(sess.CreatedAt) < 10*time.Minute {
+		return true
+	}
+	s.sudoMu.Lock()
+	defer s.sudoMu.Unlock()
+	return time.Now().Before(s.sudoUntil[sess.ID])
 }

@@ -5,10 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"strconv"
+	"strings"
 	"time"
-
-	qrcode "github.com/skip2/go-qrcode"
 
 	"shortr/internal/link"
 	"shortr/internal/store"
@@ -16,17 +16,17 @@ import (
 )
 
 type createLinkReq struct {
-	TargetURL      string   `json:"target_url"`
+	TargetURL      string   `json:"targetUrl"`
 	Code           string   `json:"code"`
 	Length         int      `json:"length"`
 	Title          string   `json:"title"`
 	Description    string   `json:"description"`
-	RedirectStatus int      `json:"redirect_status"`
+	RedirectStatus int      `json:"redirectStatus"`
 	Password       string   `json:"password"`
-	ExpiresAt      *string  `json:"expires_at"`
-	MaxClicks      *int     `json:"max_clicks"`
+	ExpiresAt      *string  `json:"expiresAt"`
+	MaxClicks      *int     `json:"maxClicks"`
 	Tags           []string `json:"tags"`
-	PassQuery      *bool    `json:"pass_query"`
+	PassQuery      *bool    `json:"passQuery"`
 	UTM            *utmDTO  `json:"utm"`
 }
 
@@ -147,16 +147,16 @@ func (s *Server) handleGetLink(w http.ResponseWriter, r *http.Request, u *store.
 
 type patchLinkReq struct {
 	Code           *string   `json:"code"`
-	TargetURL      *string   `json:"target_url"`
+	TargetURL      *string   `json:"targetUrl"`
 	Title          *string   `json:"title"`
 	Description    *string   `json:"description"`
-	RedirectStatus *int      `json:"redirect_status"`
+	RedirectStatus *int      `json:"redirectStatus"`
 	Password       *string   `json:"password"`
-	ExpiresAt      **string  `json:"expires_at"`
-	MaxClicks      **int     `json:"max_clicks"`
+	ExpiresAt      **string  `json:"expiresAt"`
+	MaxClicks      **int     `json:"maxClicks"`
 	Status         *string   `json:"status"`
 	Tags           *[]string `json:"tags"`
-	PassQuery      *bool     `json:"pass_query"`
+	PassQuery      *bool     `json:"passQuery"`
 	UTM            *utmDTO   `json:"utm"`
 }
 
@@ -267,30 +267,9 @@ func (s *Server) handleCheckCode(w http.ResponseWriter, r *http.Request, u *stor
 	respondJSON(w, http.StatusOK, map[string]any{"available": !exists})
 }
 
-func (s *Server) handleLinkQR(w http.ResponseWriter, r *http.Request, u *store.User, id string) {
-	l := s.getOwnedLink(w, r, u, id)
-	if l == nil {
-		return
-	}
-	size := 256
-	if v := r.URL.Query().Get("size"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil && n >= 64 && n <= 2048 {
-			size = n
-		}
-	}
-	png, err := qrcode.Encode(s.links.ShortURL(l.Code), qrcode.Medium, size)
-	if err != nil {
-		respondError(w, r, err)
-		return
-	}
-	w.Header().Set("Content-Type", "image/png")
-	w.Header().Set("Cache-Control", "private, max-age=3600")
-	w.Write(png) //nolint:errcheck
-}
-
 func (s *Server) handleLinkPreview(w http.ResponseWriter, r *http.Request, u *store.User) {
 	if !s.cfg.FetchTitles {
-		respondJSON(w, http.StatusOK, map[string]any{"title": "", "final_url": ""})
+		respondJSON(w, http.StatusOK, map[string]any{"title": "", "finalUrl": ""})
 		return
 	}
 	var req struct {
@@ -301,15 +280,17 @@ func (s *Server) handleLinkPreview(w http.ResponseWriter, r *http.Request, u *st
 		return
 	}
 	title, finalURL := fetchTitle(r.Context(), req.URL, s.cfg.AllowPrivateTargets)
-	respondJSON(w, http.StatusOK, map[string]any{"title": title, "final_url": finalURL})
+	respondJSON(w, http.StatusOK, map[string]any{"title": title, "finalUrl": finalURL})
 }
 
 // bulk create/update
 
 type bulkItem struct {
-	Op    string        `json:"op"` // create | delete
-	ID    string        `json:"id,omitempty"`
-	Input createLinkReq `json:"input,omitempty"`
+	Action string        `json:"action"`       // create | delete | disable | enable | tag
+	Op     string        `json:"op,omitempty"` // legacy alias for action
+	ID     string        `json:"id,omitempty"`
+	Tag    string        `json:"tag,omitempty"`
+	Input  createLinkReq `json:"input,omitempty"`
 }
 type bulkResult struct {
 	OK    bool   `json:"ok"`
@@ -333,8 +314,11 @@ func (s *Server) handleBulkLinks(w http.ResponseWriter, r *http.Request, u *stor
 	uid := u.ID
 	ip := clientIPFromContext(r.Context())
 	for _, item := range req.Items {
-		switch item.Op {
-		case "create":
+		action := item.Action
+		if action == "" {
+			action = item.Op
+		}
+		if action == "create" {
 			in := link.CreateInput{TargetURL: item.Input.TargetURL, Code: item.Input.Code, Title: item.Input.Title}
 			l, err := s.links.Create(r.Context(), &uid, ipStrOrEmpty(ip), in)
 			if err != nil {
@@ -342,20 +326,43 @@ func (s *Server) handleBulkLinks(w http.ResponseWriter, r *http.Request, u *stor
 				continue
 			}
 			results = append(results, bulkResult{OK: true, ID: l.ID})
-		case "delete":
-			l, err := s.links.Get(r.Context(), item.ID)
-			if err != nil || (!u.IsAdmin() && (l.UserID == nil || *l.UserID != uid)) {
-				results = append(results, bulkResult{OK: false, ID: item.ID, Error: "not found or forbidden"})
-				continue
-			}
-			if err := s.links.Delete(r.Context(), l.ID, l.Code); err != nil {
-				results = append(results, bulkResult{OK: false, ID: item.ID, Error: err.Error()})
-				continue
-			}
-			results = append(results, bulkResult{OK: true, ID: item.ID})
-		default:
-			results = append(results, bulkResult{OK: false, Error: "unknown op " + item.Op})
+			continue
 		}
+		l, err := s.links.Get(r.Context(), item.ID)
+		if err != nil || (!u.IsAdmin() && (l.UserID == nil || *l.UserID != uid)) {
+			results = append(results, bulkResult{OK: false, ID: item.ID, Error: "not found or forbidden"})
+			continue
+		}
+		var opErr error
+		switch action {
+		case "delete":
+			opErr = s.links.Delete(r.Context(), l.ID, l.Code)
+		case "disable", "enable":
+			st := "disabled"
+			if action == "enable" {
+				st = "active"
+			}
+			opErr = s.links.Update(r.Context(), l, link.UpdateInput{Status: &st})
+		case "tag":
+			tag := strings.TrimSpace(item.Tag)
+			if tag == "" {
+				opErr = NewAPIError(http.StatusBadRequest, "BAD_REQUEST", "tag is required")
+				break
+			}
+			tags := append([]string{}, l.Tags...)
+			if !slices.Contains(tags, tag) {
+				tags = append(tags, tag)
+			}
+			opErr = s.links.Update(r.Context(), l, link.UpdateInput{Tags: &tags})
+		default:
+			opErr = NewAPIError(http.StatusBadRequest, "BAD_REQUEST", "unknown action "+action)
+		}
+		if opErr != nil {
+			results = append(results, bulkResult{OK: false, ID: item.ID, Error: opErr.Error()})
+			continue
+		}
+		s.audit(r, uid, "link."+action, "link", l.ID, nil)
+		results = append(results, bulkResult{OK: true, ID: item.ID})
 	}
-	respondJSON(w, http.StatusOK, map[string]any{"results": results})
+	respondJSON(w, http.StatusOK, map[string]any{"items": results})
 }

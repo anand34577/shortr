@@ -8,6 +8,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"shortr/internal/auth"
@@ -28,10 +30,52 @@ type Config struct {
 	CacheCapacity         int
 }
 
+// CacheMetrics is the subset of internal/metrics.Registry the redirect
+// cache reports to; defined here (not imported) to avoid a dependency
+// cycle, same pattern as internal/click.Metrics.
+type CacheMetrics interface {
+	IncCacheHit()
+	IncCacheMiss()
+}
+
+type noopCacheMetrics struct{}
+
+func (noopCacheMetrics) IncCacheHit()  {}
+func (noopCacheMetrics) IncCacheMiss() {}
+
 type Service struct {
-	store *store.Store
-	cache *Cache
-	cfg   Config
+	store   *store.Store
+	cache   *Cache
+	cfg     Config
+	metrics CacheMetrics
+	hits    sync.Map // link ID -> *atomic.Int64: live click counter for max_clicks links
+}
+
+// ConsumeClick reserves one click against a link's max_clicks limit and
+// reports whether the redirect may proceed. The counter is seeded from the
+// stored click_count and lives in memory, so the limit holds even before the
+// batch writer has flushed the click to the database (PLAN.md §9.1).
+func (s *Service) ConsumeClick(l *store.Link) bool {
+	if l.MaxClicks == nil {
+		return true
+	}
+	c := &atomic.Int64{}
+	c.Store(l.ClickCount)
+	v, _ := s.hits.LoadOrStore(l.ID, c)
+	ctr := v.(*atomic.Int64)
+	if ctr.Add(1) > int64(*l.MaxClicks) {
+		ctr.Add(-1)
+		return false
+	}
+	return true
+}
+
+// SetMetrics wires a metrics sink after construction (optional — a
+// noop is used until this is called, so tests don't need to care).
+func (s *Service) SetMetrics(m CacheMetrics) {
+	if m != nil {
+		s.metrics = m
+	}
 }
 
 func NewService(st *store.Store, cfg Config) *Service {
@@ -49,7 +93,7 @@ func NewService(st *store.Store, cfg Config) *Service {
 	if cfg.MaxURLLength == 0 {
 		cfg.MaxURLLength = 2048
 	}
-	return &Service{store: st, cache: NewCache(cfg.CacheCapacity), cfg: cfg}
+	return &Service{store: st, cache: NewCache(cfg.CacheCapacity), cfg: cfg, metrics: noopCacheMetrics{}}
 }
 
 func (s *Service) Cache() *Cache { return s.cache }
@@ -92,6 +136,15 @@ func (s *Service) Create(ctx context.Context, actorUserID *string, actorIP strin
 		verrs.Add("redirect_status", "must be one of 301, 302, 307, 308")
 	}
 
+	if in.Length != 0 && (in.Length < 4 || in.Length > 16) {
+		verrs.Add("length", "must be between 4 and 16")
+	}
+	for _, u := range []string{in.UTMSource, in.UTMMedium, in.UTMCampaign, in.UTMTerm, in.UTMContent} {
+		if len(u) > 255 || strings.ContainsAny(u, "\r\n") {
+			verrs.Add("utm", "each field must be at most 255 characters with no line breaks")
+			break
+		}
+	}
 	if len(in.Title) > 200 {
 		verrs.Add("title", "must be at most 200 characters")
 	}
@@ -239,11 +292,13 @@ func (e *ValidationError) Error() string { return e.Errors.Error() }
 // it were live — callers must still check Link.Status/DeletedAt/ExpiresAt.
 func (s *Service) ResolveForRedirect(ctx context.Context, code string) (*store.Link, error) {
 	if e, ok := s.cache.Get(code); ok {
+		s.metrics.IncCacheHit()
 		if e.Missing {
 			return nil, store.ErrNotFound
 		}
 		return e.Link, nil
 	}
+	s.metrics.IncCacheMiss()
 	l, err := s.store.GetLinkByCode(ctx, code)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
@@ -394,6 +449,7 @@ func (s *Service) Update(ctx context.Context, l *store.Link, in UpdateInput) err
 		}
 		return err
 	}
+	s.hits.Delete(l.ID)
 	s.cache.Invalidate(oldCode)
 	if l.Code != oldCode {
 		s.cache.Invalidate(l.Code)
@@ -405,6 +461,7 @@ func (s *Service) Delete(ctx context.Context, id, code string) error {
 	if err := s.store.SoftDeleteLink(ctx, id, time.Now()); err != nil {
 		return err
 	}
+	s.hits.Delete(id)
 	s.cache.Invalidate(code)
 	return nil
 }

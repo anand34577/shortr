@@ -71,6 +71,16 @@ func (s *Store) MarkNotificationRead(ctx context.Context, id string, at time.Tim
 	return err
 }
 
+func (s *Store) MarkAllNotificationsRead(ctx context.Context, userID string, isAdmin bool, at time.Time) error {
+	q := `UPDATE notifications SET read_at = ? WHERE read_at IS NULL AND user_id = ?`
+	args := []any{toMillis(at), userID}
+	if isAdmin {
+		q = `UPDATE notifications SET read_at = ? WHERE read_at IS NULL AND (user_id = ? OR user_id IS NULL)`
+	}
+	_, err := s.execWrite(ctx, q, args...)
+	return err
+}
+
 func (s *Store) UnreadNotificationCount(ctx context.Context, userID string, isAdmin bool) (int, error) {
 	q := `SELECT count(*) FROM notifications WHERE read_at IS NULL AND user_id = ?`
 	args := []any{userID}

@@ -16,6 +16,10 @@ import (
 	"time"
 )
 
+// sendTimeout bounds every SMTP network operation (dial, auth, data) so a
+// hung or blackholed mail host can't leak a goroutine+socket per send.
+const sendTimeout = 10 * time.Second
+
 type SMTPConfig struct {
 	Enabled  bool
 	Host     string
@@ -52,13 +56,44 @@ func (s *SMTPSender) Send(to, subject, body string) error {
 	if s.cfg.UseTLS {
 		return s.sendSTARTTLS(addr, auth, to, msg)
 	}
-	return smtp.SendMail(addr, auth, s.cfg.From, []string{to}, msg)
+	return s.sendPlain(addr, auth, to, msg)
+}
+
+// sendPlain mirrors smtp.SendMail but over a connection with a hard
+// deadline, since smtp.SendMail itself has no timeout mechanism.
+func (s *SMTPSender) sendPlain(addr string, auth smtp.Auth, to string, msg []byte) error {
+	conn, err := net.DialTimeout("tcp", addr, sendTimeout)
+	if err != nil {
+		return fmt.Errorf("smtp dial: %w", err)
+	}
+	_ = conn.SetDeadline(time.Now().Add(sendTimeout))
+	c, err := smtp.NewClient(conn, s.cfg.Host)
+	if err != nil {
+		conn.Close()
+		return fmt.Errorf("smtp client: %w", err)
+	}
+	defer c.Close()
+
+	if auth != nil {
+		if ok, _ := c.Extension("AUTH"); ok {
+			if err := c.Auth(auth); err != nil {
+				return fmt.Errorf("smtp auth: %w", err)
+			}
+		}
+	}
+	return s.deliver(c, to, msg)
 }
 
 func (s *SMTPSender) sendSTARTTLS(addr string, auth smtp.Auth, to string, msg []byte) error {
-	c, err := smtp.Dial(addr)
+	conn, err := net.DialTimeout("tcp", addr, sendTimeout)
 	if err != nil {
 		return fmt.Errorf("smtp dial: %w", err)
+	}
+	_ = conn.SetDeadline(time.Now().Add(sendTimeout))
+	c, err := smtp.NewClient(conn, s.cfg.Host)
+	if err != nil {
+		conn.Close()
+		return fmt.Errorf("smtp client: %w", err)
 	}
 	defer c.Close()
 
@@ -73,6 +108,10 @@ func (s *SMTPSender) sendSTARTTLS(addr string, auth smtp.Auth, to string, msg []
 			return fmt.Errorf("smtp auth: %w", err)
 		}
 	}
+	return s.deliver(c, to, msg)
+}
+
+func (s *SMTPSender) deliver(c *smtp.Client, to string, msg []byte) error {
 	if err := c.Mail(s.cfg.From); err != nil {
 		return err
 	}

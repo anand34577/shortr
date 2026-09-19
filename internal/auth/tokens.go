@@ -37,13 +37,22 @@ const apiKeyBodyAlphabet = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOP
 // NewAPIKey returns a display key like "sk_live_ab12cd34_<32 random chars>",
 // its stable prefix (safe to show in lists), and its sha256 hash (stored).
 func NewAPIKey() (full, prefix, hash string, err error) {
-	raw := make([]byte, 24)
-	if _, err = rand.Read(raw); err != nil {
-		return "", "", "", err
-	}
+	const bodyLen = 32
 	var sb strings.Builder
-	for _, b := range raw {
-		sb.WriteByte(apiKeyBodyAlphabet[int(b)%len(apiKeyBodyAlphabet)])
+	// Rejection sampling against the largest multiple of len(alphabet) that
+	// fits in a byte, so every character is uniformly distributed (256 % 62
+	// != 0, so a plain modulo would introduce a slight bias).
+	alphabetLen := len(apiKeyBodyAlphabet)
+	limit := byte(256 - (256 % alphabetLen))
+	buf := make([]byte, 1)
+	for sb.Len() < bodyLen {
+		if _, err = rand.Read(buf); err != nil {
+			return "", "", "", err
+		}
+		if buf[0] >= limit {
+			continue
+		}
+		sb.WriteByte(apiKeyBodyAlphabet[int(buf[0])%alphabetLen])
 	}
 	body := sb.String()
 	prefix = body[:apiKeyPrefixLen]

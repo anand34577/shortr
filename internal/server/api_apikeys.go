@@ -14,7 +14,7 @@ var allScopes = map[string]bool{"links:read": true, "links:write": true, "stats:
 type createAPIKeyReq struct {
 	Name      string   `json:"name"`
 	Scopes    []string `json:"scopes"`
-	ExpiresAt *string  `json:"expires_at"`
+	ExpiresAt *string  `json:"expiresAt"`
 }
 
 func (s *Server) handleCreateAPIKey(w http.ResponseWriter, r *http.Request, u *store.User) {
@@ -45,9 +45,9 @@ func (s *Server) handleCreateAPIKey(w http.ResponseWriter, r *http.Request, u *s
 	if req.ExpiresAt != nil && *req.ExpiresAt != "" {
 		t, err := time.Parse(time.RFC3339, *req.ExpiresAt)
 		if err != nil {
-			verrs.Add("expires_at", "must be RFC 3339")
+			verrs.Add("expiresAt", "must be RFC 3339")
 		} else if !t.After(time.Now()) {
-			verrs.Add("expires_at", "must be in the future")
+			verrs.Add("expiresAt", "must be in the future")
 		} else {
 			expiresAt = &t
 		}
@@ -70,11 +70,10 @@ func (s *Server) handleCreateAPIKey(w http.ResponseWriter, r *http.Request, u *s
 	s.audit(r, u.ID, "apikey.create", "apikey", key.ID, map[string]any{"name": key.Name})
 
 	resp := toAPIKeyDTO(key)
-	respondJSON(w, http.StatusCreated, map[string]any{
-		"id": resp.ID, "name": resp.Name, "prefix": resp.Prefix, "scopes": resp.Scopes,
-		"expires_at": resp.ExpiresAt, "created_at": resp.CreatedAt,
-		"key": full, // shown once
-	})
+	respondJSON(w, http.StatusCreated, struct {
+		apiKeyDTO
+		Key string `json:"key"` // shown once
+	}{resp, full})
 }
 
 func (s *Server) handleListAPIKeys(w http.ResponseWriter, r *http.Request, u *store.User) {

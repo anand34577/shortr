@@ -194,7 +194,7 @@ func (s *Server) securityHeadersMiddleware(next http.Handler) http.Handler {
 		h.Set("X-Frame-Options", "DENY")
 		h.Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
 		if strings.HasPrefix(r.URL.Path, "/app") || r.URL.Path == "/" {
-			h.Set("Content-Security-Policy", "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'")
+			h.Set("Content-Security-Policy", "default-src 'self'; img-src 'self' data: blob:; font-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'")
 		}
 		if s.cfg.CookieSecure {
 			h.Set("Strict-Transport-Security", "max-age=63072000; includeSubDomains")
@@ -229,7 +229,7 @@ func (s *Server) rateLimitMiddleware(limiter interface{ Allow(string) bool }, sc
 // §19.2). Runs after withIdentityMiddleware so identity is available.
 func (s *Server) apiRateLimitMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !strings.HasPrefix(r.URL.Path, "/api/") {
+		if !strings.HasPrefix(r.URL.Path, "/api/") && r.URL.Path != "/mcp" {
 			next.ServeHTTP(w, r)
 			return
 		}

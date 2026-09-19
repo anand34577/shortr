@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	"shortr/internal/ulid"
@@ -152,21 +153,28 @@ func (s *Store) ListActiveAdmins(ctx context.Context) ([]*User, error) {
 	return out, rows.Err()
 }
 
-func (s *Store) ListUsers(ctx context.Context, cursor string, limit int) ([]*User, string, error) {
+func (s *Store) ListUsers(ctx context.Context, q, cursor string, limit int) ([]*User, string, error) {
 	if limit <= 0 || limit > 100 {
 		limit = 25
 	}
 	var rows *sql.Rows
 	var err error
-	if cursor == "" {
-		rows, err = s.query(ctx, `SELECT `+userCols+` FROM users ORDER BY created_at DESC, id DESC LIMIT ?`, limit+1)
-	} else {
+	where, args := "1=1", []any{}
+	if q = strings.ToLower(strings.TrimSpace(q)); q != "" {
+		like := "%" + strings.NewReplacer(`\`, `\\`, "%", `\%`, "_", `\_`).Replace(q) + "%"
+		where = `(lower(email) LIKE ? ESCAPE '\' OR lower(name) LIKE ? ESCAPE '\')`
+		args = append(args, like, like)
+	}
+	if cursor != "" {
 		createdMS, id, cErr := decodeCursor(cursor)
 		if cErr != nil {
 			return nil, "", cErr
 		}
-		rows, err = s.query(ctx, `SELECT `+userCols+` FROM users WHERE (created_at < ?) OR (created_at = ? AND id < ?) ORDER BY created_at DESC, id DESC LIMIT ?`, createdMS, createdMS, id, limit+1)
+		where += ` AND ((created_at < ?) OR (created_at = ? AND id < ?))`
+		args = append(args, createdMS, createdMS, id)
 	}
+	args = append(args, limit+1)
+	rows, err = s.query(ctx, `SELECT `+userCols+` FROM users WHERE `+where+` ORDER BY created_at DESC, id DESC LIMIT ?`, args...)
 	if err != nil {
 		return nil, "", err
 	}
