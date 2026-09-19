@@ -1,9 +1,17 @@
 # Shortr
 
+[![CI](https://github.com/anand34577/shortr/actions/workflows/ci.yml/badge.svg)](https://github.com/anand34577/shortr/actions/workflows/ci.yml)
+[![Release](https://github.com/anand34577/shortr/actions/workflows/release.yml/badge.svg)](https://github.com/anand34577/shortr/actions/workflows/release.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 A self-hosted URL shortener: single static Go binary (or a ~30 MB Docker
 image), an embedded React admin UI, no required third-party services, and
 enough analytics, auth, and notification plumbing to run for one person or
 a whole team.
+
+**[Wiki](docs/wiki/Home.md)** — installation, full configuration
+reference, API/MCP reference, deployment, backup/restore, security, and
+troubleshooting.
 
 Full design document: [PLAN.md](PLAN.md) — architecture, data model, every
 API endpoint, validation rule, error code, and ~110 documented edge cases.
@@ -28,6 +36,10 @@ API endpoint, validation rule, error code, and ~110 documented edge cases.
 - **Reverse-proxy ready.** Correct client-IP resolution behind Nginx Proxy
   Manager, Traefik, Caddy, or Cloudflare Tunnel — see
   [deploy/NGINX_PROXY_MANAGER.md](deploy/NGINX_PROXY_MANAGER.md).
+- **API-first.** A full REST API with scoped, per-user API keys
+  (`links:read`/`links:write`/`stats:read`/`admin:*`), a live OpenAPI 3 spec
+  at `/api/v1/openapi.json`, and an [MCP server](docs/wiki/MCP-Server.md) so
+  AI agents can manage links using the same scoped keys.
 
 ## Quick start (Docker)
 
@@ -51,10 +63,13 @@ make build          # builds web/ then the Go binary into bin/shortr
 SHORTR_BASE_URL=http://localhost:8080 ./bin/shortr
 ```
 
-Or grab a prebuilt binary for your platform once a release is cut
-(`make release` cross-compiles linux/darwin/windows × amd64/arm64).
+Or grab a prebuilt binary for your platform from the
+[Releases page](../../releases) — CI cross-compiles
+linux/darwin/windows × amd64/arm64 and publishes a `SHA256SUMS` file on
+every tagged push (`make release` does the same thing locally).
 
-Every setting is an environment variable prefixed `SHORTR_`; see
+Every setting is an environment variable prefixed `SHORTR_`; see the
+[Configuration wiki page](docs/wiki/Configuration.md) or
 [PLAN.md §6](PLAN.md#6-configuration) for the full list, or run
 `shortr config check` to validate and print the resolved configuration.
 
@@ -99,6 +114,8 @@ internal/jobs/         background maintenance (retention, backups, GC)
 internal/server/       HTTP API, redirect handler, public pages, SPA serving
 web/                the React admin UI (Vite + TypeScript)
 deploy/             Docker Compose variants, systemd unit, NPM guide
+docs/wiki/          operator/integrator wiki (see docs/wiki/Home.md)
+.github/workflows/  CI (build/vet/test) and tagged-release automation
 ```
 
 ## What's deliberately not built (v1)
@@ -112,4 +129,4 @@ per-node).
 
 ## License
 
-Choose one and drop it in `LICENSE` — not included here.
+MIT — see [LICENSE](LICENSE).

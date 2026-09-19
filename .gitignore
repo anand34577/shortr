@@ -1,9 +1,28 @@
 /bin/
+/dist/
 /data/
 *.db
 *.db-*
 web/node_modules/
-web/dist/
+web/dist/*
+!web/dist/.gitkeep
 *.log
 .DS_Store
 .claude/worktrees/
+
+# local/personal dev scripts and env files — never meant for the repo
+.env
+.env.local
+*.cmd
+!web/.env.example
+
+# editor/OS cruft
+.vscode/
+.idea/
+*.swp
+Thumbs.db
+
+# Go/test artifacts
+coverage.out
+*.test
+/vendor/
