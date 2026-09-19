@@ -35,54 +35,54 @@ type OIDCIdentity struct {
 }
 
 type Session struct {
-	ID          string // hashed token (hex sha256)
-	UserID      string
-	CSRFToken   string
-	IP          string
-	UserAgent   string
-	CreatedAt   time.Time
-	ExpiresAt   time.Time
-	LastSeenAt  time.Time
+	ID         string // hashed token (hex sha256)
+	UserID     string
+	CSRFToken  string
+	IP         string
+	UserAgent  string
+	CreatedAt  time.Time
+	ExpiresAt  time.Time
+	LastSeenAt time.Time
 }
 
 type APIKey struct {
-	ID          string
-	UserID      string
-	Name        string
-	Prefix      string
-	KeyHash     string
-	Scopes      []string
-	LastUsedAt  *time.Time
-	ExpiresAt   *time.Time
-	RevokedAt   *time.Time
-	CreatedAt   time.Time
+	ID         string
+	UserID     string
+	Name       string
+	Prefix     string
+	KeyHash    string
+	Scopes     []string
+	LastUsedAt *time.Time
+	ExpiresAt  *time.Time
+	RevokedAt  *time.Time
+	CreatedAt  time.Time
 }
 
 type Link struct {
-	ID              string
-	Code            string
-	TargetURL       string
-	Title           string
-	Description     string
-	UserID          *string
-	RedirectStatus  int
-	PasswordHash    *string
-	ExpiresAt       *time.Time
-	MaxClicks       *int
-	ClickCount      int64
-	LastClickAt     *time.Time
-	Status          string // active | disabled
-	DeletedAt       *time.Time
-	UTMSource       string
-	UTMMedium       string
-	UTMCampaign     string
-	UTMTerm         string
-	UTMContent      string
-	PassQuery       bool
-	Tags            []string
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
-	CreatedByIP     string
+	ID             string
+	Code           string
+	TargetURL      string
+	Title          string
+	Description    string
+	UserID         *string
+	RedirectStatus int
+	PasswordHash   *string
+	ExpiresAt      *time.Time
+	MaxClicks      *int
+	ClickCount     int64
+	LastClickAt    *time.Time
+	Status         string // active | disabled
+	DeletedAt      *time.Time
+	UTMSource      string
+	UTMMedium      string
+	UTMCampaign    string
+	UTMTerm        string
+	UTMContent     string
+	PassQuery      bool
+	Tags           []string
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+	CreatedByIP    string
 }
 
 func (l *Link) HasPassword() bool { return l.PasswordHash != nil && *l.PasswordHash != "" }

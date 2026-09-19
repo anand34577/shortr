@@ -328,7 +328,7 @@ func (s *Server) handleAdminSystem(w http.ResponseWriter, r *http.Request, actor
 		"version": s.version, "uptime_seconds": int(time.Since(s.startTime).Seconds()),
 		"db_driver": s.cfg.DBDriver, "db_ok": dbOK,
 		"cache_entries": s.links.Cache().Len(),
-		"goroutines": runtime.NumGoroutine(), "memory_alloc_bytes": ms.Alloc,
+		"goroutines":    runtime.NumGoroutine(), "memory_alloc_bytes": ms.Alloc,
 		"oidc_enabled": s.cfg.OIDCEnabled, "smtp_enabled": s.cfg.SMTPEnabled, "gotify_enabled": s.cfg.GotifyEnabled,
 	})
 }

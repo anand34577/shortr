@@ -45,11 +45,11 @@ func parseFlexTime(v string) (time.Time, error) {
 }
 
 type statsResp struct {
-	From      time.Time            `json:"from"`
-	To        time.Time            `json:"to"`
-	Total     int64                `json:"total_clicks"`
-	Uniques   int64                `json:"unique_visitors"`
-	Series    []seriesPointDTO     `json:"series"`
+	From      time.Time             `json:"from"`
+	To        time.Time             `json:"to"`
+	Total     int64                 `json:"total_clicks"`
+	Uniques   int64                 `json:"unique_visitors"`
+	Series    []seriesPointDTO      `json:"series"`
 	Breakdown map[string][]bdRowDTO `json:"breakdown"`
 }
 type seriesPointDTO struct {

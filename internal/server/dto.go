@@ -46,7 +46,7 @@ func (s *Server) toLinkDTO(l *store.Link) linkDTO {
 		Title: l.Title, Description: l.Description, UserID: l.UserID, RedirectStatus: l.RedirectStatus,
 		HasPassword: l.HasPassword(), ExpiresAt: l.ExpiresAt, MaxClicks: l.MaxClicks, ClickCount: l.ClickCount,
 		LastClickAt: l.LastClickAt, Status: statusOf(l), Tags: tags, PassQuery: l.PassQuery,
-		UTM: utmDTO{l.UTMSource, l.UTMMedium, l.UTMCampaign, l.UTMTerm, l.UTMContent},
+		UTM:       utmDTO{l.UTMSource, l.UTMMedium, l.UTMCampaign, l.UTMTerm, l.UTMContent},
 		CreatedAt: l.CreatedAt, UpdatedAt: l.UpdatedAt,
 	}
 }

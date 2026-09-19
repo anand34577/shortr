@@ -19,9 +19,9 @@ type counterKey struct {
 }
 
 type Registry struct {
-	mu       sync.Mutex
-	counters map[counterKey]*int64
-	gauges   map[counterKey]*int64
+	mu        sync.Mutex
+	counters  map[counterKey]*int64
+	gauges    map[counterKey]*int64
 	buildInfo string
 }
 
@@ -82,11 +82,11 @@ func (r *Registry) Set(name string, v int64, labels map[string]string) {
 
 // --- convenience wrappers matching the click.Metrics interface ----------
 
-func (r *Registry) IncClicksWritten(n int64)  { r.Inc("shortr_clicks_written_total", n, nil) }
-func (r *Registry) IncClicksDropped(n int64)  { r.Inc("shortr_clicks_dropped_total", n, nil) }
-func (r *Registry) IncClicksSpooled(n int64)  { r.Inc("shortr_clicks_spooled_total", n, nil) }
-func (r *Registry) SetQueueDepth(n int)       { r.Set("shortr_clicks_queued", int64(n), nil) }
-func (r *Registry) IncDBErrors(n int64)       { r.Inc("shortr_db_errors_total", n, nil) }
+func (r *Registry) IncClicksWritten(n int64) { r.Inc("shortr_clicks_written_total", n, nil) }
+func (r *Registry) IncClicksDropped(n int64) { r.Inc("shortr_clicks_dropped_total", n, nil) }
+func (r *Registry) IncClicksSpooled(n int64) { r.Inc("shortr_clicks_spooled_total", n, nil) }
+func (r *Registry) SetQueueDepth(n int)      { r.Set("shortr_clicks_queued", int64(n), nil) }
+func (r *Registry) IncDBErrors(n int64)      { r.Inc("shortr_db_errors_total", n, nil) }
 
 func (r *Registry) IncHTTPRequest(route, method string, status int) {
 	r.Inc("shortr_http_requests_total", 1, map[string]string{"route": route, "method": method, "status": strconv.Itoa(status)})
@@ -94,8 +94,8 @@ func (r *Registry) IncHTTPRequest(route, method string, status int) {
 func (r *Registry) IncRedirect(result string) {
 	r.Inc("shortr_redirects_total", 1, map[string]string{"result": result})
 }
-func (r *Registry) IncCacheHit()  { r.Inc("shortr_cache_hits_total", 1, nil) }
-func (r *Registry) IncCacheMiss() { r.Inc("shortr_cache_misses_total", 1, nil) }
+func (r *Registry) IncCacheHit()          { r.Inc("shortr_cache_hits_total", 1, nil) }
+func (r *Registry) IncCacheMiss()         { r.Inc("shortr_cache_misses_total", 1, nil) }
 func (r *Registry) SetCacheEntries(n int) { r.Set("shortr_cache_entries", int64(n), nil) }
 func (r *Registry) IncRateLimited(scope string) {
 	r.Inc("shortr_ratelimited_total", 1, map[string]string{"scope": scope})

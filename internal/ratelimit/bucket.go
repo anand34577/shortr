@@ -41,10 +41,10 @@ type bucketState struct {
 }
 
 type Limiter struct {
-	rate      Rate
-	mu        sync.Mutex
-	buckets   map[string]*bucketState
-	maxKeys   int
+	rate    Rate
+	mu      sync.Mutex
+	buckets map[string]*bucketState
+	maxKeys int
 }
 
 // New creates a limiter. rate.N == 0 disables limiting (Allow always true).

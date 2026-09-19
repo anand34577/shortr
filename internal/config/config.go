@@ -24,21 +24,21 @@ type Config struct {
 	DataDir   string
 	SecretKey []byte
 
-	DBDriver     string // sqlite | postgres
-	DBDSN        string
-	DBMaxConns   int
+	DBDriver   string // sqlite | postgres
+	DBDSN      string
+	DBMaxConns int
 
 	TrustedProxies []*net.IPNet
 	RealIPHeader   string
 	CookieSecure   bool
 	SessionTTL     time.Duration
 
-	CodeLength           int
-	CodeAlphabet         string
-	MaxURLLength         int
-	DefaultRedirectCode  int
-	AllowPrivateTargets  bool
-	BlockedDomains       []string
+	CodeLength          int
+	CodeAlphabet        string
+	MaxURLLength        int
+	DefaultRedirectCode int
+	AllowPrivateTargets bool
+	BlockedDomains      []string
 
 	IPMode              string // full | anonymize | hash | none
 	GeoIPDB             string

@@ -1,0 +1,32 @@
+# Default deployment: SQLite (embedded, no separate DB service needed).
+#
+#   cp .env.example .env   # edit SHORTR_BASE_URL, SHORTR_SECRET_KEY, etc.
+#   docker compose up -d
+#
+# See deploy/docker-compose.postgres.yml for PostgreSQL instead, and
+# deploy/docker-compose.npm.yml for a Nginx Proxy Manager-fronted setup.
+services:
+  shortr:
+    image: ghcr.io/yourorg/shortr:latest
+    build: .
+    container_name: shortr
+    restart: unless-stopped
+    environment:
+      SHORTR_BASE_URL: ${SHORTR_BASE_URL:-http://localhost:8080}
+      SHORTR_SECRET_KEY: ${SHORTR_SECRET_KEY:-}
+      SHORTR_DB_DRIVER: sqlite
+      SHORTR_REGISTRATION: ${SHORTR_REGISTRATION:-closed}
+      SHORTR_ADMIN_EMAIL: ${SHORTR_ADMIN_EMAIL:-}
+      SHORTR_ADMIN_PASSWORD: ${SHORTR_ADMIN_PASSWORD:-}
+    volumes:
+      - shortr-data:/data
+    ports:
+      - "${SHORTR_PORT:-8080}:8080"
+    healthcheck:
+      test: ["CMD", "/shortr", "healthcheck"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+
+volumes:
+  shortr-data:

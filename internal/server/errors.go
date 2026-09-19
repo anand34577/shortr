@@ -55,10 +55,10 @@ var (
 	ErrCodeExhausted    = NewAPIError(http.StatusServiceUnavailable, "CODE_EXHAUSTED", "could not generate a unique code, please try a custom alias")
 	ErrShuttingDown     = NewAPIError(http.StatusServiceUnavailable, "SHUTTING_DOWN", "server is shutting down")
 
-	ErrOIDCAlreadyLinked   = NewAPIError(http.StatusConflict, "OIDC_ALREADY_LINKED", "this SSO identity is already linked to another account")
-	ErrOIDCAccountExists   = NewAPIError(http.StatusConflict, "OIDC_ACCOUNT_EXISTS", "an account with this email already exists; sign in with your password, then link SSO from Settings")
-	ErrOIDCNoAccount       = NewAPIError(http.StatusConflict, "OIDC_NO_ACCOUNT", "no account found for you; ask an admin to invite you")
-	ErrOIDCEmailUnverified = NewAPIError(http.StatusConflict, "OIDC_EMAIL_UNVERIFIED", "your identity provider has not verified your email")
+	ErrOIDCAlreadyLinked    = NewAPIError(http.StatusConflict, "OIDC_ALREADY_LINKED", "this SSO identity is already linked to another account")
+	ErrOIDCAccountExists    = NewAPIError(http.StatusConflict, "OIDC_ACCOUNT_EXISTS", "an account with this email already exists; sign in with your password, then link SSO from Settings")
+	ErrOIDCNoAccount        = NewAPIError(http.StatusConflict, "OIDC_NO_ACCOUNT", "no account found for you; ask an admin to invite you")
+	ErrOIDCEmailUnverified  = NewAPIError(http.StatusConflict, "OIDC_EMAIL_UNVERIFIED", "your identity provider has not verified your email")
 	ErrOIDCDomainNotAllowed = NewAPIError(http.StatusConflict, "OIDC_DOMAIN_NOT_ALLOWED", "your email domain is not allowed to sign in")
 )
 

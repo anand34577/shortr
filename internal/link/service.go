@@ -55,24 +55,24 @@ func NewService(st *store.Store, cfg Config) *Service {
 func (s *Service) Cache() *Cache { return s.cache }
 
 var (
-	ErrCodeTaken       = errors.New("link: code already taken")
-	ErrCodeExhausted   = errors.New("link: could not generate a unique code")
-	ErrLimitReached    = errors.New("link: per-user link limit reached")
-	ErrNotFound        = store.ErrNotFound
+	ErrCodeTaken     = errors.New("link: code already taken")
+	ErrCodeExhausted = errors.New("link: could not generate a unique code")
+	ErrLimitReached  = errors.New("link: per-user link limit reached")
+	ErrNotFound      = store.ErrNotFound
 )
 
 type CreateInput struct {
-	TargetURL      string
-	Code           string // optional custom alias
-	Length         int    // optional length override for generated codes
-	Title          string
-	Description    string
-	RedirectStatus int
-	Password       string
-	ExpiresAt      *time.Time
-	MaxClicks      *int
-	Tags           []string
-	PassQuery      *bool
+	TargetURL                                              string
+	Code                                                   string // optional custom alias
+	Length                                                 int    // optional length override for generated codes
+	Title                                                  string
+	Description                                            string
+	RedirectStatus                                         int
+	Password                                               string
+	ExpiresAt                                              *time.Time
+	MaxClicks                                              *int
+	Tags                                                   []string
+	PassQuery                                              *bool
 	UTMSource, UTMMedium, UTMCampaign, UTMTerm, UTMContent string
 }
 
@@ -268,17 +268,17 @@ func (s *Service) GetByCode(ctx context.Context, code string) (*store.Link, erro
 }
 
 type UpdateInput struct {
-	Code           *string
-	TargetURL      *string
-	Title          *string
-	Description    *string
-	RedirectStatus *int
-	Password       *string // empty string clears
-	ExpiresAt      **time.Time
-	MaxClicks      **int
-	Status         *string
-	Tags           *[]string
-	PassQuery      *bool
+	Code                                                   *string
+	TargetURL                                              *string
+	Title                                                  *string
+	Description                                            *string
+	RedirectStatus                                         *int
+	Password                                               *string // empty string clears
+	ExpiresAt                                              **time.Time
+	MaxClicks                                              **int
+	Status                                                 *string
+	Tags                                                   *[]string
+	PassQuery                                              *bool
 	UTMSource, UTMMedium, UTMCampaign, UTMTerm, UTMContent *string
 }
 

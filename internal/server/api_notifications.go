@@ -31,12 +31,12 @@ func (s *Server) handleMarkNotificationRead(w http.ResponseWriter, r *http.Reque
 }
 
 type notifyPrefsResp struct {
-	Email  map[string]bool `json:"email"`
-	Gotify map[string]bool `json:"gotify"`
-	InApp  map[string]bool `json:"in_app"`
-	SMTPGloballyEnabled   bool `json:"smtp_globally_enabled"`
-	GotifyGloballyEnabled bool `json:"gotify_globally_enabled"`
-	Kinds []string `json:"kinds"`
+	Email                 map[string]bool `json:"email"`
+	Gotify                map[string]bool `json:"gotify"`
+	InApp                 map[string]bool `json:"in_app"`
+	SMTPGloballyEnabled   bool            `json:"smtp_globally_enabled"`
+	GotifyGloballyEnabled bool            `json:"gotify_globally_enabled"`
+	Kinds                 []string        `json:"kinds"`
 }
 
 var notifyKinds = []string{

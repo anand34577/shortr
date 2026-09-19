@@ -216,7 +216,7 @@ func (m *Manager) Exchange(ctx context.Context, code, codeVerifier, nonce, group
 }
 
 var (
-	ErrEmailUnverified = errors.New("oidc: email not verified")
+	ErrEmailUnverified  = errors.New("oidc: email not verified")
 	ErrDomainNotAllowed = errors.New("oidc: email domain not allowed")
 )
 

@@ -179,14 +179,14 @@ func (s *Store) IncrementClickCount(ctx context.Context, linkID string, n int64,
 }
 
 type LinkFilter struct {
-	UserID  string // "" = all users (admin)
-	Query   string
-	Tag     string
-	Status  string // "", active, disabled, deleted
-	Sort    string // created_at | clicks | title
-	Order   string // asc | desc
-	Cursor  string
-	Limit   int
+	UserID string // "" = all users (admin)
+	Query  string
+	Tag    string
+	Status string // "", active, disabled, deleted
+	Sort   string // created_at | clicks | title
+	Order  string // asc | desc
+	Cursor string
+	Limit  int
 }
 
 func (s *Store) ListLinks(ctx context.Context, f LinkFilter) ([]*Link, string, error) {

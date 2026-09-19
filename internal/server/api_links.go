@@ -146,18 +146,18 @@ func (s *Server) handleGetLink(w http.ResponseWriter, r *http.Request, u *store.
 }
 
 type patchLinkReq struct {
-	Code           *string  `json:"code"`
-	TargetURL      *string  `json:"target_url"`
-	Title          *string  `json:"title"`
-	Description    *string  `json:"description"`
-	RedirectStatus *int     `json:"redirect_status"`
-	Password       *string  `json:"password"`
-	ExpiresAt      **string `json:"expires_at"`
-	MaxClicks      **int    `json:"max_clicks"`
-	Status         *string  `json:"status"`
+	Code           *string   `json:"code"`
+	TargetURL      *string   `json:"target_url"`
+	Title          *string   `json:"title"`
+	Description    *string   `json:"description"`
+	RedirectStatus *int      `json:"redirect_status"`
+	Password       *string   `json:"password"`
+	ExpiresAt      **string  `json:"expires_at"`
+	MaxClicks      **int     `json:"max_clicks"`
+	Status         *string   `json:"status"`
 	Tags           *[]string `json:"tags"`
-	PassQuery      *bool    `json:"pass_query"`
-	UTM            *utmDTO  `json:"utm"`
+	PassQuery      *bool     `json:"pass_query"`
+	UTM            *utmDTO   `json:"utm"`
 }
 
 func (s *Server) handlePatchLink(w http.ResponseWriter, r *http.Request, u *store.User, id string) {
@@ -307,9 +307,9 @@ func (s *Server) handleLinkPreview(w http.ResponseWriter, r *http.Request, u *st
 // bulk create/update
 
 type bulkItem struct {
-	Op    string          `json:"op"` // create | delete
-	ID    string          `json:"id,omitempty"`
-	Input createLinkReq   `json:"input,omitempty"`
+	Op    string        `json:"op"` // create | delete
+	ID    string        `json:"id,omitempty"`
+	Input createLinkReq `json:"input,omitempty"`
 }
 type bulkResult struct {
 	OK    bool   `json:"ok"`

@@ -47,8 +47,8 @@ type Writer struct {
 	metrics Metrics
 	log     *slog.Logger
 
-	ch   chan Event
-	wg   sync.WaitGroup
+	ch chan Event
+	wg sync.WaitGroup
 }
 
 func NewWriter(st *store.Store, geo *GeoDB, cfg WriterConfig, m Metrics, log *slog.Logger) *Writer {

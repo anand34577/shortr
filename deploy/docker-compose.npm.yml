@@ -1,0 +1,50 @@
+# Shortr behind Nginx Proxy Manager (NPM) on a shared Docker network, with
+# TLS/ACME handled entirely by NPM. See deploy/NGINX_PROXY_MANAGER.md for the
+# proxy-host setup steps in the NPM UI.
+#
+#   docker network create npm-proxy   # once, if it doesn't already exist
+#   docker compose -f deploy/docker-compose.npm.yml up -d
+#
+# Shortr is NOT published on a host port here — only reachable via NPM on
+# the shared network, which is the point.
+services:
+  npm:
+    image: jc21/nginx-proxy-manager:latest
+    container_name: npm
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "81:81" # NPM admin UI — put this behind your own firewall/VPN
+    volumes:
+      - npm-data:/data
+      - npm-letsencrypt:/etc/letsencrypt
+    networks: [npm-proxy]
+
+  shortr:
+    image: ghcr.io/yourorg/shortr:latest
+    build:
+      context: ..
+    container_name: shortr
+    restart: unless-stopped
+    environment:
+      SHORTR_BASE_URL: ${SHORTR_BASE_URL:?e.g. https://sho.rt}
+      SHORTR_SECRET_KEY: ${SHORTR_SECRET_KEY:?set SHORTR_SECRET_KEY}
+      # NPM's default docker bridge subnet; adjust `docker network inspect
+      # npm-proxy` if yours differs. This is what makes real client IPs show
+      # up correctly in analytics instead of NPM's container IP.
+      SHORTR_TRUSTED_PROXIES: ${SHORTR_TRUSTED_PROXIES:-172.18.0.0/16}
+      SHORTR_REGISTRATION: ${SHORTR_REGISTRATION:-closed}
+    volumes:
+      - shortr-data:/data
+    networks: [npm-proxy]
+    # no `ports:` — only NPM talks to shortr, over the shared network
+
+networks:
+  npm-proxy:
+    external: true
+
+volumes:
+  npm-data:
+  npm-letsencrypt:
+  shortr-data:

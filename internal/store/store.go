@@ -34,7 +34,7 @@ type Store struct {
 	write *sql.DB
 	read  *sql.DB
 
-	dataDir string
+	dataDir  string
 	lockFile *os.File
 }
 

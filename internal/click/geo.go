@@ -11,8 +11,8 @@ import (
 // configured, Lookup returns zero values and the feature is simply off (no
 // outbound network call is ever made — PLAN.md §3.1).
 type GeoDB struct {
-	mu sync.RWMutex
-	db *maxminddb.Reader
+	mu   sync.RWMutex
+	db   *maxminddb.Reader
 	path string
 }
 

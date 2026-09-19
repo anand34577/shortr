@@ -9,7 +9,7 @@ import (
 	"shortr/internal/ulid"
 )
 
-func toMillis(t time.Time) int64 { return t.UnixMilli() }
+func toMillis(t time.Time) int64    { return t.UnixMilli() }
 func fromMillis(ms int64) time.Time { return time.UnixMilli(ms) }
 
 func nullMillis(t *time.Time) any {
