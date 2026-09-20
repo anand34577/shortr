@@ -74,6 +74,10 @@ func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
 		respondError(w, r, err)
 		return
 	}
+	// Serialise check-then-create so two concurrent requests can't both
+	// see an empty users table and each create an admin.
+	s.setupMu.Lock()
+	defer s.setupMu.Unlock()
 	n, err := s.store.CountUsers(r.Context())
 	if err != nil {
 		respondError(w, r, err)
@@ -133,31 +137,38 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		respondError(w, r, err)
 		return
 	}
-	ip := clientIPFromContext(r.Context())
-	lockKey := "login:" + strings.ToLower(req.Email)
-	ipKey := "login-ip:" + ipStrOrEmpty(ip)
-	if !s.rlAuth.Allow(lockKey) || !s.rlAuth.Allow(ipKey) {
+	// Lockout is per (email, client network) and counts FAILED attempts only:
+	// keying on the email alone would let anyone lock a victim out by
+	// guessing wrong passwords for their address. The per-IP request limit
+	// is already applied by the route middleware.
+	lockKey := "login-fail:" + strings.ToLower(strings.TrimSpace(req.Email)) + "|" + ipKeyFn(r)
+	if !s.rlAuth.Peek(lockKey) {
 		respondError(w, r, ErrLockedOut)
 		return
+	}
+	badLogin := func() {
+		s.rlAuth.Allow(lockKey)
+		respondError(w, r, NewAPIError(http.StatusUnauthorized, "UNAUTHENTICATED", "invalid email or password"))
 	}
 
 	email, err := validate.Email(req.Email)
 	if err != nil {
 		auth.VerifyAgainstDummy(req.Password)
-		respondError(w, r, NewAPIError(http.StatusUnauthorized, "UNAUTHENTICATED", "invalid email or password"))
+		badLogin()
 		return
 	}
 	u, err := s.store.GetUserByEmail(r.Context(), email)
 	if err != nil || u.PasswordHash == nil {
 		auth.VerifyAgainstDummy(req.Password)
-		respondError(w, r, NewAPIError(http.StatusUnauthorized, "UNAUTHENTICATED", "invalid email or password"))
+		badLogin()
 		return
 	}
 	ok, needsRehash, err := auth.VerifyPassword(req.Password, *u.PasswordHash)
 	if err != nil || !ok {
-		respondError(w, r, NewAPIError(http.StatusUnauthorized, "UNAUTHENTICATED", "invalid email or password"))
+		badLogin()
 		return
 	}
+	s.rlAuth.Reset(lockKey)
 	if !u.IsActive() {
 		respondError(w, r, ErrUserDisabled)
 		return

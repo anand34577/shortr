@@ -1,6 +1,8 @@
 package server
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"net"
 	"net/http"
@@ -168,19 +170,23 @@ func (s *Server) hasValidPasswordCookie(r *http.Request, l *store.Link) bool {
 	}
 	// payload is "<linkID>|<passwordHash>" — the hash is included so a
 	// password change invalidates all outstanding cookies immediately.
-	want := l.ID + "|"
+	return auth.ConstantTimeEqual(payload, linkCookiePayload(l))
+}
+
+// linkCookiePayload binds the cookie to the link and its current password.
+// Only a digest of the stored hash goes into the (signed but readable)
+// cookie, so unlocking a link never reveals the argon2 hash itself.
+func linkCookiePayload(l *store.Link) string {
+	h := ""
 	if l.PasswordHash != nil {
-		want += *l.PasswordHash
+		sum := sha256.Sum256([]byte(*l.PasswordHash))
+		h = hex.EncodeToString(sum[:])
 	}
-	return payload == want
+	return l.ID + "|" + h
 }
 
 func (s *Server) setPasswordCookie(w http.ResponseWriter, l *store.Link) {
-	payload := l.ID + "|"
-	if l.PasswordHash != nil {
-		payload += *l.PasswordHash
-	}
-	token := auth.SealValue(s.cfg.SecretKey, payload, time.Hour)
+	token := auth.SealValue(s.cfg.SecretKey, linkCookiePayload(l), time.Hour)
 	http.SetCookie(w, &http.Cookie{
 		Name: linkPasswordCookiePrefix + l.Code, Value: token, Path: "/",
 		HttpOnly: true, Secure: s.cfg.CookieSecure, SameSite: http.SameSiteLaxMode, MaxAge: 3600,

@@ -55,6 +55,13 @@ func (s *Server) requestIDMiddleware(next http.Handler) http.Handler {
 func (s *Server) realIPMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ip := resolveClientIP(r, s.cfg.TrustedProxies, s.cfg.RealIPHeader)
+		if s.cfg.RealIPHeader != "" && r.Header.Get(s.cfg.RealIPHeader) != "" && len(s.cfg.TrustedProxies) == 0 {
+			s.warnProxy.Do(func() {
+				s.log.Warn("request carries a forwarded-IP header but SHORTR_TRUSTED_PROXIES is empty; "+
+					"all clients are seen as the proxy's address, so rate limits and analytics are shared",
+					"header", s.cfg.RealIPHeader, "remote", r.RemoteAddr)
+			})
+		}
 		ctx := context.WithValue(r.Context(), ctxKeyClientIP, ip)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})

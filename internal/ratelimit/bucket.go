@@ -6,6 +6,7 @@ package ratelimit
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -87,31 +88,61 @@ func (l *Limiter) Allow(key string) bool {
 	return true
 }
 
-// evictOldestLocked drops a handful of the least-recently-used buckets when
-// the map grows unbounded (e.g. under an IP-scanning attack). Caller holds
-// l.mu.
+// Peek reports whether a request for key would currently be permitted,
+// without consuming a token. Pair it with Allow to rate-limit only failures
+// (e.g. login attempts) and Reset to forgive on success.
+func (l *Limiter) Peek(key string) bool {
+	if l.rate.N == 0 {
+		return true
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	b, ok := l.buckets[key]
+	if !ok {
+		return true
+	}
+	tokens := b.tokens + time.Since(b.lastRefill).Seconds()*float64(l.rate.N)/l.rate.Interval.Seconds()
+	return tokens >= 1
+}
+
+// Reset forgets key, restoring its full allowance.
+func (l *Limiter) Reset(key string) {
+	l.mu.Lock()
+	delete(l.buckets, key)
+	l.mu.Unlock()
+}
+
+// evictOldestLocked makes room when the map is full (e.g. under an
+// IP-scanning attack). Buckets that have already refilled to capacity carry no
+// state (dropping them is indistinguishable from never having seen the key),
+// so those go first; only if the sample has none do we drop the
+// least-recently-used entries. Sampling keeps this O(1000). Caller holds l.mu.
 func (l *Limiter) evictOldestLocked() {
 	type kv struct {
 		key string
 		t   time.Time
 	}
-	victims := make([]kv, 0, 100)
+	now := time.Now()
+	refill := float64(l.rate.N) / l.rate.Interval.Seconds()
+	sample := make([]kv, 0, 1000)
+	removed := 0
 	for k, b := range l.buckets {
-		victims = append(victims, kv{k, b.lastAccess})
-		if len(victims) >= 1000 {
+		if b.tokens+now.Sub(b.lastRefill).Seconds()*refill >= float64(l.rate.N) {
+			delete(l.buckets, k)
+			removed++
+		} else {
+			sample = append(sample, kv{k, b.lastAccess})
+		}
+		if len(sample)+removed >= 1000 {
 			break
 		}
 	}
-	// simple partial selection: remove the oldest ~10% sampled
-	for i := 0; i < len(victims)/10+1 && i < len(victims); i++ {
-		oldestIdx := i
-		for j := i + 1; j < len(victims); j++ {
-			if victims[j].t.Before(victims[oldestIdx].t) {
-				oldestIdx = j
-			}
-		}
-		delete(l.buckets, victims[oldestIdx].key)
-		victims[oldestIdx] = victims[i]
+	if removed > 0 {
+		return
+	}
+	sort.Slice(sample, func(i, j int) bool { return sample[i].t.Before(sample[j].t) })
+	for i := 0; i < len(sample)/10+1 && i < len(sample); i++ {
+		delete(l.buckets, sample[i].key)
 	}
 }
 

@@ -3,9 +3,13 @@ package server
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"shortr/internal/ratelimit"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -228,5 +232,103 @@ func TestAPIKeyAuthWorks(t *testing.T) {
 	env.srv.handler.ServeHTTP(rec2, req)
 	if rec2.Code != http.StatusOK {
 		t.Fatalf("api key auth: status=%d body=%s", rec2.Code, rec2.Body.String())
+	}
+}
+
+func TestLoginLockout(t *testing.T) {
+	env := newTestEnv(t)
+	good := map[string]string{"email": "a@example.com", "password": "correcthorsebatterystaple"}
+	bad := map[string]string{"email": "a@example.com", "password": "wrongpassword"}
+	env.do(t, "POST", "/auth/setup", good, nil, "")
+
+	env.srv.rlAuth = ratelimit.New(ratelimit.Rate{N: 3, Interval: time.Hour})
+	login := func(addr string, body map[string]string) int {
+		env.srv.rlAuth.Reset(strings.Split(addr, ":")[0]) // isolate the per-IP middleware bucket from the failure bucket
+		b, _ := json.Marshal(body)
+		req := httptest.NewRequest("POST", "/auth/login", bytes.NewReader(b))
+		req.RemoteAddr = addr
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		env.srv.handler.ServeHTTP(rec, req)
+		return rec.Code
+	}
+	const victim, attacker = "203.0.113.5:1", "198.51.100.9:1"
+
+	// successful logins never consume the failure budget
+	for i := 0; i < 5; i++ {
+		if c := login(victim, good); c != http.StatusOK {
+			t.Fatalf("good login %d: %d", i, c)
+		}
+	}
+	// an attacker exhausting their own budget gets locked out...
+	for i := 0; i < 3; i++ {
+		if c := login(attacker, bad); c != http.StatusUnauthorized {
+			t.Fatalf("bad login %d: %d", i, c)
+		}
+	}
+	if c := login(attacker, bad); c == http.StatusUnauthorized {
+		t.Fatal("expected lockout after repeated failures")
+	}
+	// ...but the legitimate user, on another network, is unaffected.
+	if c := login(victim, good); c != http.StatusOK {
+		t.Fatalf("victim locked out by attacker's failures: %d", c)
+	}
+	// and a success resets the client's own failures
+	login(victim, bad)
+	login(victim, bad)
+	login(victim, good)
+	for i := 0; i < 3; i++ {
+		if c := login(victim, bad); c != http.StatusUnauthorized {
+			t.Fatalf("failures should have been reset by success: %d", c)
+		}
+	}
+}
+
+func TestConcurrentSetupCreatesOneAdmin(t *testing.T) {
+	env := newTestEnv(t)
+	var wg sync.WaitGroup
+	codes := make([]int, 6)
+	for i := range codes {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			rec := env.do(t, "POST", "/auth/setup", map[string]string{"email": fmt.Sprintf("u%d@example.com", i), "password": "correcthorsebatterystaple"}, nil, "")
+			codes[i] = rec.Code
+		}()
+	}
+	wg.Wait()
+	created := 0
+	for _, c := range codes {
+		if c == http.StatusCreated {
+			created++
+		}
+	}
+	if created != 1 {
+		t.Fatalf("expected exactly 1 successful setup, got %d (%v)", created, codes)
+	}
+}
+
+func TestCORSAllowsPUT(t *testing.T) {
+	env := newTestEnv(t)
+	env.srv.cfg.CORSOrigins = []string{"chrome-extension://abc"}
+	env.srv.routes()
+	req := httptest.NewRequest("OPTIONS", "/api/v1/settings", nil)
+	req.Header.Set("Origin", "chrome-extension://abc")
+	rec := httptest.NewRecorder()
+	env.srv.handler.ServeHTTP(rec, req)
+	if m := rec.Header().Get("Access-Control-Allow-Methods"); !strings.Contains(m, "PUT") {
+		t.Fatalf("PUT missing from allowed methods: %q", m)
+	}
+}
+
+func TestLinkCookiePayloadDoesNotExposeHash(t *testing.T) {
+	h := "$argon2id$v=19$m=65536,t=3,p=1$salt$hash"
+	p := linkCookiePayload(&store.Link{ID: "L1", PasswordHash: &h})
+	if strings.Contains(p, "argon2") || !strings.HasPrefix(p, "L1|") {
+		t.Fatalf("payload leaks hash or lacks link id: %q", p)
+	}
+	h2 := h + "x"
+	if p == linkCookiePayload(&store.Link{ID: "L1", PasswordHash: &h2}) {
+		t.Fatal("payload must change when the password changes")
 	}
 }

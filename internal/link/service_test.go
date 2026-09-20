@@ -173,3 +173,60 @@ func TestGenerateCodeNoModuloBiasAndLength(t *testing.T) {
 		t.Fatalf("expected broad alphabet coverage, only saw %d distinct chars", len(seen))
 	}
 }
+
+func TestCaseVariantCacheInvalidatedTogether(t *testing.T) {
+	svc, _ := newTestService(t)
+	ctx := context.Background()
+	l, err := svc.Create(ctx, nil, "", CreateInput{TargetURL: "https://example.com/a", Code: "MyCode"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []string{"MyCode", "mycode", "MYCODE"} {
+		if _, err := svc.ResolveForRedirect(ctx, c); err != nil {
+			t.Fatalf("resolve %s: %v", c, err)
+		}
+	}
+	if err := svc.Delete(ctx, l.ID, l.Code); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []string{"MyCode", "mycode", "MYCODE"} {
+		got, err := svc.ResolveForRedirect(ctx, c)
+		if err != nil {
+			continue // not found is fine
+		}
+		if got.DeletedAt == nil {
+			t.Fatalf("stale live entry served for %s after delete", c)
+		}
+	}
+}
+
+func TestCreateClearsNegativeCache(t *testing.T) {
+	svc, _ := newTestService(t)
+	ctx := context.Background()
+	if _, err := svc.ResolveForRedirect(ctx, "soon"); err == nil {
+		t.Fatal("expected not found")
+	}
+	if _, err := svc.Create(ctx, nil, "", CreateInput{TargetURL: "https://example.com/a", Code: "soon"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.ResolveForRedirect(ctx, "soon"); err != nil {
+		t.Fatalf("new link hidden by negative cache: %v", err)
+	}
+}
+
+func TestPruneHitsDropsIdleCounters(t *testing.T) {
+	svc, _ := newTestService(t)
+	m := 5
+	l := &store.Link{ID: "x", MaxClicks: &m}
+	svc.ConsumeClick(l)
+	svc.PruneHits(time.Hour)
+	if _, ok := svc.hits.Load("x"); !ok {
+		t.Fatal("fresh counter must survive")
+	}
+	svc.PruneHits(0)
+	time.Sleep(time.Millisecond)
+	svc.PruneHits(0)
+	if _, ok := svc.hits.Load("x"); ok {
+		t.Fatal("idle counter must be pruned")
+	}
+}

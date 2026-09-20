@@ -61,7 +61,11 @@ func (c *Cache) shardFor(code string) *shard {
 	return c.shards[h.Sum32()%shardCount]
 }
 
+// Codes are case-insensitive in the database (unique index on LOWER(code)),
+// so every cache operation keys on the lowercased code: one entry per link
+// regardless of the casing a visitor used, and one Invalidate clears them all.
 func (c *Cache) Get(code string) (*Entry, bool) {
+	code = toLower(code)
 	sh := c.shardFor(code)
 	sh.mu.Lock()
 	defer sh.mu.Unlock()
@@ -88,6 +92,7 @@ func (c *Cache) PutMissing(code string) {
 }
 
 func (c *Cache) put(code string, e *Entry) {
+	code = toLower(code)
 	sh := c.shardFor(code)
 	sh.mu.Lock()
 	defer sh.mu.Unlock()
@@ -107,26 +112,16 @@ func (c *Cache) put(code string, e *Entry) {
 	}
 }
 
-// Invalidate removes a code (and, if it differs, its lowercase form) from
-// the cache — called on every link mutation for write-through consistency.
+// Invalidate removes a code from the cache (positive or negative entry) —
+// called on every link mutation for write-through consistency.
 func (c *Cache) Invalidate(code string) {
+	code = toLower(code)
 	sh := c.shardFor(code)
 	sh.mu.Lock()
+	defer sh.mu.Unlock()
 	if el, ok := sh.items[code]; ok {
 		sh.order.Remove(el)
 		delete(sh.items, code)
-	}
-	sh.mu.Unlock()
-
-	lower := toLower(code)
-	if lower != code {
-		sh2 := c.shardFor(lower)
-		sh2.mu.Lock()
-		if el, ok := sh2.items[lower]; ok {
-			sh2.order.Remove(el)
-			delete(sh2.items, lower)
-		}
-		sh2.mu.Unlock()
 	}
 }
 
