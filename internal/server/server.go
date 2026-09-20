@@ -32,6 +32,8 @@ type Server struct {
 	rlAPI      *ratelimit.Limiter
 	rlAuth     *ratelimit.Limiter
 	rlPassword *ratelimit.Limiter
+	setupMu    sync.Mutex
+	warnProxy  sync.Once
 
 	log       *slog.Logger
 	handler   http.Handler
@@ -108,6 +110,7 @@ func (s *Server) gcRateLimiters() {
 		s.rlAPI.GC(10 * time.Minute)
 		s.rlAuth.GC(10 * time.Minute)
 		s.rlPassword.GC(10 * time.Minute)
+		s.links.PruneHits(time.Hour)
 	}
 }
 

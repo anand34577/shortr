@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"html"
 	"io"
 	"net"
 	"net/http"
@@ -74,10 +75,10 @@ func fetchTitle(ctx context.Context, rawURL string, allowPrivate bool) (title, f
 	if m == nil {
 		return "", resp.Request.URL.String()
 	}
-	t := strings.TrimSpace(string(m[1]))
-	t = strings.Join(strings.Fields(t), " ")
-	if len(t) > 200 {
-		t = t[:200]
+	t := strings.ToValidUTF8(string(m[1]), "")
+	t = strings.Join(strings.Fields(html.UnescapeString(t)), " ")
+	if r := []rune(t); len(r) > 200 {
+		t = string(r[:200])
 	}
 	return t, resp.Request.URL.String()
 }

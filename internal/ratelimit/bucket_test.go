@@ -70,3 +70,34 @@ func TestGC(t *testing.T) {
 		t.Fatalf("expected GC to clear buckets, got %d", l.Len())
 	}
 }
+
+func TestPeekDoesNotConsumeAndResetRestores(t *testing.T) {
+	l := New(Rate{N: 2, Interval: time.Hour})
+	for i := 0; i < 5; i++ {
+		if !l.Peek("k") {
+			t.Fatal("peek must not consume")
+		}
+	}
+	l.Allow("k")
+	l.Allow("k")
+	if l.Peek("k") {
+		t.Fatal("expected exhausted")
+	}
+	l.Reset("k")
+	if !l.Peek("k") || !l.Allow("k") {
+		t.Fatal("reset should restore full allowance")
+	}
+}
+
+func TestEvictionPrefersFullBuckets(t *testing.T) {
+	l := New(Rate{N: 2, Interval: time.Hour})
+	l.maxKeys = 3
+	l.Allow("locked")
+	l.Allow("locked") // exhausted: carries state
+	l.buckets["idle1"] = &bucketState{tokens: 2, lastRefill: time.Now(), lastAccess: time.Now()}
+	l.buckets["idle2"] = &bucketState{tokens: 2, lastRefill: time.Now(), lastAccess: time.Now()}
+	l.Allow("new")
+	if l.Peek("locked") {
+		t.Fatal("exhausted bucket must survive eviction")
+	}
+}

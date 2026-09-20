@@ -48,7 +48,7 @@ type Service struct {
 	cache   *Cache
 	cfg     Config
 	metrics CacheMetrics
-	hits    sync.Map // link ID -> *atomic.Int64: live click counter for max_clicks links
+	hits    sync.Map // link ID -> *hitCounter: live click counter for max_clicks links
 }
 
 // ConsumeClick reserves one click against a link's max_clicks limit and
@@ -59,15 +59,35 @@ func (s *Service) ConsumeClick(l *store.Link) bool {
 	if l.MaxClicks == nil {
 		return true
 	}
-	c := &atomic.Int64{}
-	c.Store(l.ClickCount)
+	c := &hitCounter{}
+	c.n.Store(l.ClickCount)
 	v, _ := s.hits.LoadOrStore(l.ID, c)
-	ctr := v.(*atomic.Int64)
-	if ctr.Add(1) > int64(*l.MaxClicks) {
-		ctr.Add(-1)
+	ctr := v.(*hitCounter)
+	ctr.last.Store(time.Now().UnixNano())
+	if ctr.n.Add(1) > int64(*l.MaxClicks) {
+		ctr.n.Add(-1)
 		return false
 	}
 	return true
+}
+
+type hitCounter struct {
+	n    atomic.Int64
+	last atomic.Int64 // unix nanos of the last ConsumeClick
+}
+
+// PruneHits drops click counters idle for longer than idle. By then the
+// link's cache entry has expired too, so the next ConsumeClick re-seeds from
+// the stored click_count instead of a stale value. Bounds memory on
+// long-lived instances with many max_clicks links.
+func (s *Service) PruneHits(idle time.Duration) {
+	cutoff := time.Now().Add(-idle).UnixNano()
+	s.hits.Range(func(k, v any) bool {
+		if v.(*hitCounter).last.Load() < cutoff {
+			s.hits.Delete(k)
+		}
+		return true
+	})
 }
 
 // SetMetrics wires a metrics sink after construction (optional — a
@@ -236,6 +256,7 @@ func (s *Service) Create(ctx context.Context, actorUserID *string, actorIP strin
 			}
 			return nil, err
 		}
+		s.cache.Invalidate(l.Code) // drop any negative entry from an earlier miss
 		return l, nil
 	}
 
@@ -254,6 +275,7 @@ func (s *Service) Create(ctx context.Context, actorUserID *string, actorIP strin
 		l.Code = gc
 		err = s.store.CreateLink(ctx, l)
 		if err == nil {
+			s.cache.Invalidate(l.Code)
 			return l, nil
 		}
 		if !errors.Is(err, store.ErrConflict) {
@@ -307,10 +329,6 @@ func (s *Service) ResolveForRedirect(ctx context.Context, code string) (*store.L
 		return nil, err
 	}
 	s.cache.Put(l.Code, l)
-	if !strings.EqualFold(l.Code, code) {
-		// looked up via case-insensitive fallback: also cache under the requested casing
-		s.cache.Put(code, l)
-	}
 	return l, nil
 }
 
