@@ -47,6 +47,7 @@ import { QrPanel } from "@/features/links/qr-panel";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { useMe } from "@/hooks/use-me";
 import type { Link } from "@/lib/types";
+import { copyText } from "@/lib/clipboard";
 
 export default function LinksPage() {
   const navigate = useNavigate();
@@ -86,6 +87,15 @@ export default function LinksPage() {
   const bulk = useBulkLinks();
 
   const links = data?.items ?? [];
+  const hasFilters = Boolean(debouncedSearch || debouncedTag || status !== "all" || allUsers);
+
+  function clearFilters() {
+    setSearch("");
+    setTag("");
+    setStatus("all");
+    setAllUsers(false);
+    resetPaging();
+  }
 
   const columns = React.useMemo<ColumnDef<Link>[]>(
     () => [
@@ -220,8 +230,10 @@ export default function LinksPage() {
   }
 
   async function copyShortUrl(link: Link) {
-    await navigator.clipboard.writeText(link.shortUrl);
-    toast.success("Copied to clipboard");
+    const copied = await copyText(link.shortUrl);
+    toast[copied ? "success" : "error"](copied ? "Copied to clipboard" : "Copy failed", {
+      description: copied ? undefined : link.shortUrl,
+    });
   }
 
   async function bulkAction(action: "disable" | "enable" | "delete" | "tag", tagName?: string) {
@@ -272,7 +284,7 @@ export default function LinksPage() {
             setTag(e.target.value);
             resetPaging();
           }}
-          placeholder="Tag"
+          placeholder="Filter by tag"
           className="w-full sm:w-32"
           aria-label="Filter by tag"
         />
@@ -330,7 +342,7 @@ export default function LinksPage() {
 
       {selected.size > 0 && (
         <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm">
-          <span className="font-medium">{selected.size} selected</span>
+          <span className="font-medium" aria-live="polite">{selected.size} selected</span>
           <Button variant="outline" size="sm" className="gap-1.5" onClick={() => bulkAction("disable")}>
             <Ban className="size-3.5" /> Disable
           </Button>
@@ -381,9 +393,9 @@ export default function LinksPage() {
         ) : links.length === 0 ? (
           <EmptyState
             icon={TagIcon}
-            title={debouncedSearch ? "No links match your search" : "No links yet"}
-            description={debouncedSearch ? "Try a different search term or clear filters." : "Create your first short link to get started."}
-            action={!debouncedSearch ? { label: "New link", onClick: () => setCreateOpen(true) } : undefined}
+            title={hasFilters ? "No links match your filters" : "No links yet"}
+            description={hasFilters ? "Try changing or clearing your filters." : "Create your first short link to get started."}
+            action={hasFilters ? { label: "Clear filters", onClick: clearFilters } : { label: "New link", onClick: () => setCreateOpen(true) }}
           />
         ) : (
           <>
@@ -405,8 +417,16 @@ export default function LinksPage() {
                   {table.getRowModel().rows.map((row) => (
                     <TableRow
                       key={row.id}
-                      className="cursor-pointer"
+                      className="cursor-pointer focus-visible:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                      tabIndex={0}
+                      role="link"
                       onClick={() => navigate(`/app/links/${row.original.id}`)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          navigate(`/app/links/${row.original.id}`);
+                        }
+                      }}
                     >
                       {row.getVisibleCells().map((cell) => (
                         <TableCell key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</TableCell>

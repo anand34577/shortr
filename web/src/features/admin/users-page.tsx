@@ -26,6 +26,7 @@ import { useAdminUsers, useCreateUser } from "@/features/admin/api";
 import { inviteUserSchema, type InviteUserInput } from "@/lib/schemas";
 import { applyServerErrors } from "@/lib/apply-server-errors";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
+import { copyText } from "@/lib/clipboard";
 
 export default function AdminUsersPage() {
   const navigate = useNavigate();
@@ -50,8 +51,8 @@ export default function AdminUsersPage() {
     try {
       const created = await create.mutateAsync(values);
       if (created.generatedPassword) {
-        await navigator.clipboard.writeText(created.generatedPassword).catch(() => {});
-        toast.success("User created — temporary password copied", {
+        const copied = await copyText(created.generatedPassword);
+        toast.success(copied ? "User created — temporary password copied" : "User created", {
           description: created.generatedPassword,
           duration: 30000,
         });

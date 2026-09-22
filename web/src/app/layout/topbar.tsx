@@ -53,7 +53,7 @@ export function Topbar({
       <div className="ml-auto flex items-center gap-1">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" aria-label="Toggle theme">
+            <Button variant="ghost" size="icon" aria-label="Choose theme">
               {theme === "dark" ? <Moon className="size-4" /> : theme === "light" ? <Sun className="size-4" /> : <Laptop className="size-4" />}
             </Button>
           </DropdownMenuTrigger>

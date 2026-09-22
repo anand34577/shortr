@@ -12,10 +12,11 @@ import { loginSchema, type LoginInput } from "@/lib/schemas";
 import { applyServerErrors } from "@/lib/apply-server-errors";
 import { useLogin, oidcStartUrl } from "@/features/auth/api";
 import { useAuthStatus } from "@/hooks/use-auth-status";
+import { safeNextPath } from "@/lib/api";
 
 export default function LoginPage() {
   const [params] = useSearchParams();
-  const next = params.get("next") || "/app";
+  const next = safeNextPath(params.get("next"));
   const status = useAuthStatus();
   const login = useLogin();
 

@@ -8,6 +8,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { LocalTime } from "@/components/local-time";
+import { copyText } from "@/lib/clipboard";
+import { confirm as confirmDialog } from "@/components/confirm-dialog";
 import {
   useAdminUser,
   useAdminUserLinks,
@@ -39,12 +41,21 @@ export default function UserDetailPage() {
 
   async function handleReset() {
     const res = await resetPassword.mutateAsync(user!.id);
-    await navigator.clipboard.writeText(res.password).catch(() => {});
-    toast.success("One-time password generated & copied to clipboard", { duration: 10000 });
+    const copied = await copyText(res.password);
+    toast.success(copied ? "One-time password generated and copied" : "One-time password generated", {
+      description: copied ? undefined : res.password,
+      duration: 10000,
+    });
   }
 
   async function handleDelete() {
-    if (!confirm(`Delete ${user!.email}? This cannot be undone.`)) return;
+    const confirmed = await confirmDialog({
+      title: "Delete this user?",
+      description: `${user!.email} will lose access immediately. This cannot be undone.`,
+      confirmLabel: "Delete user",
+      variant: "destructive",
+    });
+    if (!confirmed) return;
     await del.mutateAsync(user!.id);
     toast.success("User deleted");
     navigate("/app/admin/users");
@@ -100,7 +111,19 @@ export default function UserDetailPage() {
               </TableHeader>
               <TableBody>
                 {links.items.map((l) => (
-                  <TableRow key={l.id} className="cursor-pointer" onClick={() => navigate(`/app/links/${l.id}`)}>
+                  <TableRow
+                    key={l.id}
+                    className="cursor-pointer focus-visible:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                    tabIndex={0}
+                    role="link"
+                    onClick={() => navigate(`/app/links/${l.id}`)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        navigate(`/app/links/${l.id}`);
+                      }
+                    }}
+                  >
                     <TableCell className="flex items-center gap-1.5 font-mono">
                       {l.code} <Copy className="size-3 text-muted-foreground" />
                     </TableCell>

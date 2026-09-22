@@ -14,6 +14,7 @@ import { useStatsOverview, useRecentActivity } from "@/features/dashboard/api";
 import { RangePicker, rangeToDates, type RangeKey } from "@/features/links/detail/range-picker";
 import { countryFlag } from "@/features/links/detail/breakdown-bars";
 import { targetUrlSchema } from "@/lib/schemas";
+import { copyText } from "@/lib/clipboard";
 
 export default function DashboardPage() {
   const navigate = useNavigate();
@@ -37,8 +38,10 @@ export default function DashboardPage() {
     try {
       const link = await create.mutateAsync({ targetUrl: parsed.data });
       setLastCreated({ shortUrl: link.shortUrl });
-      await navigator.clipboard.writeText(link.shortUrl).catch(() => {});
-      toast.success("Shortened & copied to clipboard");
+      const copied = await copyText(link.shortUrl);
+      toast.success(copied ? "Shortened and copied to clipboard" : "Short link created", {
+        description: copied ? undefined : link.shortUrl,
+      });
       setQuickUrl("");
     } catch {
       toast.error("Couldn't shorten that URL");
@@ -47,7 +50,12 @@ export default function DashboardPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <Card className="border-primary/20 bg-gradient-to-br from-primary/5 to-transparent">
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
+        <p className="mt-1 text-sm text-muted-foreground">Shorten links and keep an eye on what’s getting clicked.</p>
+      </div>
+
+      <Card className="border-primary/20 bg-linear-to-br from-primary/5 to-transparent">
         <CardContent className="p-6">
           <h1 className="text-lg font-semibold">Shorten a link</h1>
           <p className="text-sm text-muted-foreground">Paste a URL and go — everything else is optional.</p>
@@ -110,11 +118,16 @@ export default function DashboardPage() {
         <CardContent>
           {stats.isLoading ? (
             <Skeleton className="h-64 w-full" />
+          ) : stats.isError ? (
+            <div className="flex h-64 flex-col items-center justify-center gap-3 text-center">
+              <p className="text-sm text-muted-foreground">Couldn’t load click analytics.</p>
+              <Button variant="outline" size="sm" onClick={() => stats.refetch()}>Retry</Button>
+            </div>
           ) : !stats.data?.series.length ? (
             <div className="flex h-64 items-center justify-center text-sm text-muted-foreground">No clicks yet — share a link to see activity here.</div>
           ) : (
             <ResponsiveContainer width="100%" height={260}>
-              <AreaChart data={stats.data.series}>
+              <AreaChart data={stats.data.series} aria-label="Clicks over time">
                 <defs>
                   <linearGradient id="dashClicks" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="var(--color-primary)" stopOpacity={0.35} />
@@ -138,6 +151,11 @@ export default function DashboardPage() {
               {Array.from({ length: 4 }).map((_, i) => (
                 <Skeleton key={i} className="h-10 w-full" />
               ))}
+            </div>
+          ) : recent.isError ? (
+            <div className="flex flex-col items-center gap-3 py-8 text-center">
+              <p className="text-sm text-muted-foreground">Couldn’t load recent activity.</p>
+              <Button variant="outline" size="sm" onClick={() => recent.refetch()}>Retry</Button>
             </div>
           ) : !recent.data?.items.length ? (
             <EmptyState icon={MousePointerClick} title="No activity yet" description="Clicks on your links will show up here in real time." />
