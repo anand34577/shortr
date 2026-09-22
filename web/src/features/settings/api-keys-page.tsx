@@ -19,6 +19,7 @@ import { createApiKeySchema, apiKeyScopes, type CreateApiKeyInput } from "@/lib/
 import { applyServerErrors } from "@/lib/apply-server-errors";
 import { useApiKeys, useCreateApiKey, useRevokeApiKey } from "@/features/settings/api";
 import type { ApiKeyCreated } from "@/lib/types";
+import { copyText } from "@/lib/clipboard";
 
 export default function ApiKeysPage() {
   const { data, isLoading } = useApiKeys();
@@ -170,8 +171,10 @@ export default function ApiKeysPage() {
                 size="icon"
                 aria-label="Copy API key"
                 onClick={async () => {
-                  await navigator.clipboard.writeText(created.key);
-                  toast.success("Copied to clipboard");
+                  const copied = await copyText(created.key);
+                  toast[copied ? "success" : "error"](copied ? "Copied to clipboard" : "Copy failed", {
+                    description: copied ? undefined : created.key,
+                  });
                 }}
               >
                 <Copy className="size-4" />

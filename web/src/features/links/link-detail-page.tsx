@@ -11,6 +11,8 @@ import { LocalTime } from "@/components/local-time";
 import { useLink, useDeleteLink, useRestoreLink, useUpdateLink } from "@/features/links/api";
 import { QrPanel } from "@/features/links/qr-panel";
 import { LinkFormDialog } from "@/features/links/link-form-dialog";
+import { confirm } from "@/components/confirm-dialog";
+import { copyText } from "@/lib/clipboard";
 import { OverviewTab } from "@/features/links/detail/overview-tab";
 import { AudienceTab } from "@/features/links/detail/audience-tab";
 import { ReferrersTab } from "@/features/links/detail/referrers-tab";
@@ -19,31 +21,55 @@ import { ClicksTab } from "@/features/links/detail/clicks-tab";
 export default function LinkDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { data: link, isLoading } = useLink(id);
+  const { data: link, isLoading, isError, refetch } = useLink(id);
   const del = useDeleteLink();
   const restore = useRestoreLink();
   const update = useUpdateLink(id ?? "");
   const [editOpen, setEditOpen] = React.useState(false);
 
-  if (isLoading || !link) {
+  if (isLoading) {
     return (
-      <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-4" role="status" aria-label="Loading link">
         <Skeleton className="h-8 w-64" />
         <Skeleton className="h-40 w-full" />
       </div>
     );
   }
 
+  if (isError || !link) {
+    return (
+      <div className="flex flex-col items-center gap-4 py-16 text-center">
+        <h1 className="text-lg font-semibold">Couldn’t load this link</h1>
+        <p className="max-w-md text-sm text-muted-foreground">The link may have been removed or the request failed.</p>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => refetch()}>Retry</Button>
+          <Button onClick={() => navigate("/app/links")}>Back to links</Button>
+        </div>
+      </div>
+    );
+  }
+
+  const currentLink = link;
+
   async function copyShort() {
-    await navigator.clipboard.writeText(link!.shortUrl);
-    toast.success("Copied to clipboard");
+    const copied = await copyText(currentLink.shortUrl);
+    toast[copied ? "success" : "error"](copied ? "Copied to clipboard" : "Copy failed", {
+      description: copied ? undefined : currentLink.shortUrl,
+    });
   }
 
   async function handleDelete() {
-    await del.mutateAsync(link!.id);
+    const confirmed = await confirm({
+      title: "Delete this link?",
+      description: "The link will stop redirecting. You can restore it from the Links page.",
+      confirmLabel: "Delete link",
+      variant: "destructive",
+    });
+    if (!confirmed) return;
+    await del.mutateAsync(currentLink.id);
     toast("Link deleted", {
       duration: 8000,
-      action: { label: "Undo", onClick: () => restore.mutate(link!.id) },
+      action: { label: "Undo", onClick: () => restore.mutate(currentLink.id) },
     });
     navigate("/app/links");
   }

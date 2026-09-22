@@ -11,6 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { TagInput } from "@/components/ui/tag-input";
 import { FieldError } from "@/components/field-error";
+import { copyText } from "@/lib/clipboard";
 import {
   Accordion,
   AccordionContent,
@@ -163,14 +164,10 @@ export function LinkFormDialog({
         onCreated?.(updated);
       } else {
         const created = await create.mutateAsync(payload);
-        try {
-          await navigator.clipboard.writeText(created.shortUrl);
-          toast.success("Link created — copied to clipboard", {
-            description: created.shortUrl,
-          });
-        } catch {
-          toast.success("Link created", { description: created.shortUrl });
-        }
+        const copied = await copyText(created.shortUrl);
+        toast.success(copied ? "Link created and copied to clipboard" : "Link created", {
+          description: created.shortUrl,
+        });
         onOpenChange(false);
         onCreated?.(created);
       }
@@ -208,7 +205,7 @@ export function LinkFormDialog({
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="code">Custom alias (optional)</Label>
             <div className="flex items-center gap-2 rounded-lg border border-input bg-background px-3 shadow-sm focus-within:ring-2 focus-within:ring-ring">
-              <span className="shrink-0 text-sm text-muted-foreground">short.domain/</span>
+              <span className="shrink-0 text-sm text-muted-foreground">{window.location.host}/</span>
               <input
                 id="code"
                 className="h-9 flex-1 bg-transparent text-sm outline-none"

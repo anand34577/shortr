@@ -39,6 +39,13 @@ export function getCsrfToken() {
   return csrfToken;
 }
 
+export function safeNextPath(next: string | null | undefined): string {
+  if (!next || next.length > 512 || !next.startsWith("/app") || next.startsWith("//") || next.includes("\\")) {
+    return "/app";
+  }
+  return next;
+}
+
 type SudoPrompt = () => Promise<string | null>;
 let sudoPrompt: SudoPrompt | null = null;
 /** Registers the UI that asks the user to re-enter their password (SUDO_REQUIRED). */

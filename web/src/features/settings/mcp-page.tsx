@@ -7,6 +7,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { SettingsNav } from "@/features/settings/settings-nav";
 import { api } from "@/lib/api";
+import { copyText } from "@/lib/clipboard";
 
 interface McpTool {
   name: string;
@@ -23,8 +24,10 @@ function CodeBlock({ children }: { children: string }) {
         className="shrink-0"
         aria-label="Copy"
         onClick={async () => {
-          await navigator.clipboard.writeText(children);
-          toast.success("Copied to clipboard");
+          const copied = await copyText(children);
+          toast[copied ? "success" : "error"](copied ? "Copied to clipboard" : "Copy failed", {
+            description: copied ? undefined : children,
+          });
         }}
       >
         <Copy className="size-4" />

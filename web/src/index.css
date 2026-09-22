@@ -43,6 +43,12 @@
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
   --sidebar-border: oklch(0.91 0.003 286);
+
+  --surface-subtle: oklch(0.98 0.002 286);
+  --surface-elevated: oklch(1 0 0);
+  --text-secondary: oklch(0.48 0.006 285);
+  --text-tertiary: oklch(0.58 0.006 285);
+  --focus-ring: var(--ring);
 }
 
 .dark {
@@ -78,6 +84,12 @@
   --sidebar: oklch(0.17 0.003 285);
   --sidebar-foreground: oklch(0.95 0 0);
   --sidebar-border: oklch(0.27 0.004 285);
+
+  --surface-subtle: oklch(0.17 0.003 285);
+  --surface-elevated: oklch(0.21 0.004 285);
+  --text-secondary: oklch(0.66 0.006 285);
+  --text-tertiary: oklch(0.52 0.006 285);
+  --focus-ring: var(--ring);
 }
 
 @theme inline {
@@ -145,6 +157,10 @@
   body {
     @apply bg-background text-foreground font-sans antialiased;
     font-feature-settings: "tnum" 1, "cv11" 1;
+    min-width: 320px;
+  }
+  ::selection {
+    background: color-mix(in oklch, var(--primary) 24%, transparent);
   }
   .tabular-nums {
     font-feature-settings: "tnum" 1;
