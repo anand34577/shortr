@@ -68,6 +68,11 @@ docker compose -f deploy/docker-compose.postgres.yml up -d
 docker compose -f deploy/docker-compose.npm.yml up -d
 ```
 
+See [deploy/NGINX_PROXY_MANAGER.md](deploy/NGINX_PROXY_MANAGER.md) for the
+full NPM walkthrough, including how to expose only the redirect hot path
+publicly (e.g. through a Cloudflare Tunnel) while keeping the admin console
+reachable only over your own VPN.
+
 Data lives in the `/data` volume. Images are also published to
 `ghcr.io/anand34577/shortr` for each release.
 

@@ -31,6 +31,15 @@ defaults; `SHORTR_SECRET_KEY` and `POSTGRES_PASSWORD` (postgres variant) use
 `${VAR:?required}` syntax so `docker compose up` fails loudly instead of
 starting with an empty secret.
 
+## Public redirects, private admin console
+
+If you want the redirect hot path reachable from the internet (e.g. via a
+Cloudflare Tunnel) while keeping `/app`, `/api`, `/auth` and `/mcp`
+reachable only from your own VPN (Tailscale, Netbird, WireGuard, ...), see
+[deploy/NGINX_PROXY_MANAGER.md](../../deploy/NGINX_PROXY_MANAGER.md#6-split-exposure-public-redirects-via-cloudflare-tunnel-admin-console-via-vpn-only)
+section 6 — two NPM proxy hosts against one shortr backend, one path-locked
+by an nginx rule, the other IP-locked to your VPN's subnet.
+
 ## systemd
 
 `deploy/shortr.service` runs the binary directly with:

@@ -20,6 +20,13 @@
 - **Keep secrets out of version control.** Use environment variables or an
   untracked `.env` file for SMTP, OIDC and database credentials.
 - **Back up regularly.** See [Backup and Restore](Backup-and-Restore.md).
+- **Keep the admin console off the public internet if you can.** If only
+  the redirect hot path needs to be public, put `/app`, `/api`, `/auth`
+  and `/mcp` behind a VPN-only hostname instead of exposing everything
+  through the same public reverse-proxy path — see
+  [deploy/NGINX_PROXY_MANAGER.md](../../deploy/NGINX_PROXY_MANAGER.md#6-split-exposure-public-redirects-via-cloudflare-tunnel-admin-console-via-vpn-only)
+  section 6, or set `SHORTR_UI_ENABLED=false` on a dedicated public-only
+  instance if you don't need the console reachable remotely at all.
 
 ## If a key or session leaks
 

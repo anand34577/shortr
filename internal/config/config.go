@@ -98,6 +98,7 @@ type Config struct {
 	AdminPassword   string
 
 	CORSOrigins []string
+	UIEnabled   bool
 }
 
 func env(key, def string) string {
@@ -372,6 +373,17 @@ func Load() (*Config, error) {
 	c.AdminEmail = env("ADMIN_EMAIL", "")
 	c.AdminPassword = env("ADMIN_PASSWORD", "")
 	c.CORSOrigins = envList("CORS_ORIGINS")
+	// UI_ENABLED gates the embedded React admin console (/app and the "/"
+	// landing redirect) so a deployment can expose only the redirect hot
+	// path and the JSON API — e.g. behind a public reverse proxy that's
+	// meant for API/Android-app use only, with the dashboard reserved for
+	// an SSH tunnel or a private network. Off by default is unnecessary
+	// (the console is fully authenticated), but on request this makes
+	// "API/redirects only, in production, publicly" a one-line env flag
+	// instead of relying solely on edge routing to hide it.
+	if c.UIEnabled, err = envBool("UI_ENABLED", true); err != nil {
+		return nil, err
+	}
 
 	return c, nil
 }
