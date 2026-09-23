@@ -1,12 +1,19 @@
 # Shortr behind Nginx Proxy Manager (NPM) on a shared Docker network, with
 # TLS/ACME handled entirely by NPM. See deploy/NGINX_PROXY_MANAGER.md for the
-# proxy-host setup steps in the NPM UI.
+# full setup: two NPM proxy hosts (public redirects via your existing
+# Cloudflare Tunnel, private admin console via your VPN) against this one
+# shortr backend. Your cloudflared instance runs and is configured
+# separately from this file — just point its public hostname at whatever
+# this NPM container ends up reachable on (see section 6 of that doc).
 #
 #   docker network create npm-proxy   # once, if it doesn't already exist
+#   cp .env.example .env              # set SHORTR_BASE_URL, SHORTR_SECRET_KEY
 #   docker compose -f deploy/docker-compose.npm.yml up -d
 #
 # Shortr is NOT published on a host port here — only reachable via NPM on
-# the shared network, which is the point.
+# the shared network, which is the point. Local development is unaffected:
+# `docker compose up` (the root docker-compose.yml) or `make run` still work
+# standalone against localhost — this file is only for the public deployment.
 services:
   npm:
     image: jc21/nginx-proxy-manager:latest
@@ -34,6 +41,9 @@ services:
       # npm-proxy` if yours differs. This is what makes real client IPs show
       # up correctly in analytics instead of NPM's container IP.
       SHORTR_TRUSTED_PROXIES: ${SHORTR_TRUSTED_PROXIES:-172.18.0.0/16}
+      # set to CF-Connecting-IP in .env when fronted by Cloudflare (Tunnel or
+      # orange-clouded DNS) — see deploy/NGINX_PROXY_MANAGER.md section 6.
+      SHORTR_REAL_IP_HEADER: ${SHORTR_REAL_IP_HEADER:-X-Forwarded-For}
       SHORTR_REGISTRATION: ${SHORTR_REGISTRATION:-closed}
     volumes:
       - shortr-data:/data

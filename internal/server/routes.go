@@ -140,11 +140,14 @@ func (s *Server) routes() {
 	mux.HandleFunc("GET /api/v1/admin/system", s.requireAdmin(s.handleAdminSystem))
 	mux.HandleFunc("POST /api/v1/admin/backup", s.requireAdmin(s.handleAdminBackup))
 
-	// --- SPA -------------------------------------------------------
-	mux.Handle("GET /app/", s.spaHandler())
-	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, "/app", http.StatusFound)
-	})
+	// --- SPA (can be turned off for API/redirect-only deployments;
+	// see SHORTR_UI_ENABLED) -------------------------------------------
+	if s.cfg.UIEnabled {
+		mux.Handle("GET /app/", s.spaHandler())
+		mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, "/app", http.StatusFound)
+		})
+	}
 
 	// --- redirect hot path (catch-all) --------------------------------
 	redirectChain := chain(http.HandlerFunc(s.handleRedirect), func(h http.Handler) http.Handler {

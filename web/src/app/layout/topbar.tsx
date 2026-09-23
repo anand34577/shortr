@@ -15,6 +15,8 @@ import { useTheme } from "@/hooks/use-theme";
 import { useLogout } from "@/features/auth/api";
 import type { Me } from "@/lib/types";
 
+const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+
 export function Topbar({
   me,
   onOpenSidebar,
@@ -43,11 +45,15 @@ export function Topbar({
 
       <button
         onClick={onOpenCommandPalette}
-        className="flex h-9 flex-1 max-w-sm items-center gap-2 rounded-lg border border-input bg-background px-3 text-sm text-muted-foreground shadow-sm hover:bg-accent"
+        aria-label="Search or jump to a page"
+        aria-keyshortcuts={isMac ? "Meta+K" : "Control+K"}
+        className="flex h-9 max-w-sm flex-1 items-center gap-2 rounded-lg border border-input bg-background px-3 text-sm text-muted-foreground shadow-sm hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
-        <Search className="size-4" />
-        <span className="hidden sm:inline">Search or jump to...</span>
-        <kbd className="ml-auto hidden rounded border border-border px-1.5 py-0.5 text-xs sm:inline">⌘K</kbd>
+        <Search className="size-4" aria-hidden="true" />
+        <span className="hidden sm:inline">Search or jump to…</span>
+        <kbd className="ml-auto hidden rounded border border-border px-1.5 py-0.5 text-xs sm:inline" aria-hidden="true">
+          {isMac ? "⌘K" : "Ctrl K"}
+        </kbd>
       </button>
 
       <div className="ml-auto flex items-center gap-1">

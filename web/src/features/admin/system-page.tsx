@@ -8,6 +8,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { LocalTime } from "@/components/local-time";
 import { AdminNav } from "@/features/admin/admin-nav";
 import { useAdminSystem, useTriggerBackup } from "@/features/admin/api";
+import { toastError } from "@/lib/apply-server-errors";
+import { LoadError } from "@/components/load-error";
 
 function formatBytes(bytes: number) {
   if (!bytes) return "0 B";
@@ -24,12 +26,16 @@ function formatUptime(seconds: number) {
 }
 
 export default function SystemPage() {
-  const { data, isLoading } = useAdminSystem();
+  const { data, isLoading, isError, refetch } = useAdminSystem();
   const backup = useTriggerBackup();
 
   async function handleBackup() {
-    await backup.mutateAsync();
-    toast.success("Backup started");
+    try {
+      await backup.mutateAsync();
+      toast.success("Backup started");
+    } catch (err) {
+      toastError(err, "Couldn't start a backup");
+    }
   }
 
   return (
@@ -39,8 +45,10 @@ export default function SystemPage() {
         <AdminNav />
       </div>
 
-      {isLoading || !data ? (
+      {isLoading ? (
         <Skeleton className="h-64 w-full" />
+      ) : isError || !data ? (
+        <LoadError what="system status" onRetry={() => refetch()} />
       ) : (
         <>
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">

@@ -46,6 +46,13 @@ const REDIRECT_OPTIONS: { value: 301 | 302 | 307 | 308; label: string; hint: str
   { value: 308, label: "308 Permanent Redirect", hint: "Like 301 but preserves the request method." },
 ];
 
+/** 10 characters from an unambiguous alphabet, from the CSPRNG (not Math.random). */
+function generatePassword() {
+  const alphabet = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789";
+  const bytes = crypto.getRandomValues(new Uint8Array(10));
+  return Array.from(bytes, (b) => alphabet[b % alphabet.length]).join("");
+}
+
 function toDatetimeLocal(iso: string | null | undefined) {
   if (!iso) return "";
   const d = new Date(iso);
@@ -76,6 +83,7 @@ export function LinkFormDialog({
     control,
     handleSubmit,
     watch,
+    getValues,
     setValue,
     setError,
     reset,
@@ -133,15 +141,18 @@ export function LinkFormDialog({
   }, [open, link, reset]);
 
   const targetUrl = watch("targetUrl");
+  const targetUrlField = register("targetUrl");
   const code = watch("code") || "";
   const debouncedCode = useDebouncedValue(code, 400);
   const aliasCheck = useCheckAlias(debouncedCode, debouncedCode.length > 0 && (!isEdit || debouncedCode !== link?.code));
 
   async function handleFetchTitle() {
-    if (!targetUrl) return;
+    // Only fill an empty title, and only for something that looks like a URL:
+    // never overwrite a title the user typed or that the link already has.
+    if (!/^https?:\/\/\S+$/i.test(targetUrl?.trim() ?? "") || getValues("title")) return;
     try {
       const res = await previewTitle.mutateAsync(targetUrl);
-      if (res.title) setValue("title", res.title);
+      if (res.title && !getValues("title")) setValue("title", res.title);
     } catch {
       // Title fetch is best-effort; silently ignore.
     }
@@ -192,12 +203,20 @@ export function LinkFormDialog({
             <div className="flex gap-2">
               <Input
                 id="targetUrl"
+                type="url"
+                inputMode="url"
                 autoFocus
                 placeholder="https://example.com/very/long/path"
-                {...register("targetUrl")}
-                onBlur={handleFetchTitle}
+                aria-invalid={!!errors.targetUrl}
+                {...targetUrlField}
+                onBlur={(e) => {
+                  targetUrlField.onBlur(e);
+                  handleFetchTitle();
+                }}
               />
-              {previewTitle.isPending && <Loader2 className="mt-2 size-4 shrink-0 animate-spin text-muted-foreground" />}
+              {previewTitle.isPending && (
+                <Loader2 className="mt-3 size-4 shrink-0 animate-spin text-muted-foreground" aria-label="Fetching page title" />
+              )}
             </div>
             <FieldError message={errors.targetUrl?.message} />
           </div>
@@ -205,11 +224,14 @@ export function LinkFormDialog({
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="code">Custom alias (optional)</Label>
             <div className="flex items-center gap-2 rounded-lg border border-input bg-background px-3 shadow-sm focus-within:ring-2 focus-within:ring-ring">
-              <span className="shrink-0 text-sm text-muted-foreground">{window.location.host}/</span>
+              <span className="max-w-[45%] shrink-0 truncate text-sm text-muted-foreground">{window.location.host}/</span>
               <input
                 id="code"
-                className="h-9 flex-1 bg-transparent text-sm outline-none"
+                className="h-9 min-w-0 flex-1 bg-transparent text-sm outline-none"
                 placeholder="my-link"
+                autoComplete="off"
+                spellCheck={false}
+                aria-invalid={!!errors.code || aliasCheck.data?.available === false}
                 {...register("code")}
               />
               {debouncedCode && debouncedCode !== link?.code && (
@@ -274,7 +296,7 @@ export function LinkFormDialog({
                           key={p.label}
                           type="button"
                           onClick={() => setValue("expiresAt", new Date(Date.now() + p.ms).toISOString())}
-                          className="rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground hover:bg-accent"
+                          className="rounded-full border border-border px-2.5 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                         >
                           {p.label}
                         </button>
@@ -282,7 +304,7 @@ export function LinkFormDialog({
                       <button
                         type="button"
                         onClick={() => setValue("expiresAt", null)}
-                        className="rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground hover:bg-accent"
+                        className="rounded-full border border-border px-2.5 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                       >
                         Clear
                       </button>
@@ -312,14 +334,16 @@ export function LinkFormDialog({
                         id="password"
                         type={showPassword ? "text" : "password"}
                         placeholder={isEdit && link?.hasPassword ? "•••••••• (unchanged)" : "No password"}
+                        autoComplete="new-password"
                         {...register("password")}
-                        className="pr-9"
+                        className="pr-10"
                       />
                       <button
                         type="button"
                         onClick={() => setShowPassword((s) => !s)}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground"
+                        className="absolute right-1 top-1/2 flex size-8 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                         aria-label={showPassword ? "Hide password" : "Show password"}
+                        aria-pressed={showPassword}
                       >
                         {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
                       </button>
@@ -329,9 +353,9 @@ export function LinkFormDialog({
                       variant="outline"
                       size="icon"
                       aria-label="Generate password"
+                      title="Generate password"
                       onClick={() => {
-                        const gen = Math.random().toString(36).slice(2, 10);
-                        setValue("password", gen);
+                        setValue("password", generatePassword(), { shouldDirty: true });
                         setShowPassword(true);
                       }}
                     >

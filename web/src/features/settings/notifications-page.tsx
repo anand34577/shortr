@@ -10,6 +10,8 @@ import { SettingsNav } from "@/features/settings/settings-nav";
 import { useNotificationPreferences, useUpdateNotificationPreferences } from "@/features/settings/api";
 import { useRequestNotificationPermission } from "@/hooks/use-notifications";
 import type { NotificationChannel, NotificationKind } from "@/lib/types";
+import { toastError } from "@/lib/apply-server-errors";
+import { LoadError } from "@/components/load-error";
 
 const KIND_LABELS: Record<NotificationKind, string> = {
   "link.expiring_soon": "A link is about to expire",
@@ -25,7 +27,7 @@ const CHANNELS: { key: NotificationChannel; label: string; icon: React.Component
 ];
 
 export default function NotificationsSettingsPage() {
-  const { data, isLoading } = useNotificationPreferences();
+  const { data, isLoading, isError, refetch } = useNotificationPreferences();
   const update = useUpdateNotificationPreferences();
   const requestPermission = useRequestNotificationPermission();
   const [permission, setPermission] = React.useState<NotificationPermission | "unsupported">(
@@ -36,7 +38,11 @@ export default function NotificationsSettingsPage() {
     if (!data) return;
     const current = data.channels[kind] ?? [];
     const next = enabled ? Array.from(new Set([...current, channel])) : current.filter((c) => c !== channel);
-    await update.mutateAsync({ channels: { ...data.channels, [kind]: next } });
+    try {
+      await update.mutateAsync({ channels: { ...data.channels, [kind]: next } });
+    } catch (err) {
+      toastError(err, "Couldn't save your notification preferences");
+    }
   }
 
   async function handleEnableBrowser() {
@@ -74,8 +80,10 @@ export default function NotificationsSettingsPage() {
           <CardDescription>Choose how you're notified for each type of event.</CardDescription>
         </CardHeader>
         <CardContent>
-          {isLoading || !data ? (
+          {isLoading ? (
             <Skeleton className="h-64 w-full" />
+          ) : isError || !data ? (
+            <LoadError what="your preferences" onRetry={() => refetch()} />
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -99,7 +107,8 @@ export default function NotificationsSettingsPage() {
                         <td key={c.key} className="px-3 py-2.5 text-center">
                           <Switch
                             checked={(data.channels[kind] ?? []).includes(c.key)}
-                            disabled={c.key === "gotify" && !data.gotifyConfigured}
+                            // each toggle sends the full map, so wait for the last save to land
+                            disabled={update.isPending || (c.key === "gotify" && !data.gotifyConfigured)}
                             onCheckedChange={(checked) => toggle(kind, c.key, checked)}
                             aria-label={`${c.label} notifications for ${KIND_LABELS[kind]}`}
                           />

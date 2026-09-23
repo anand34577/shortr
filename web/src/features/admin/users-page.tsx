@@ -16,7 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, linkRowProps } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { FieldError } from "@/components/field-error";
 import { EmptyState } from "@/components/empty-state";
@@ -26,15 +26,15 @@ import { useAdminUsers, useCreateUser } from "@/features/admin/api";
 import { inviteUserSchema, type InviteUserInput } from "@/lib/schemas";
 import { applyServerErrors } from "@/lib/apply-server-errors";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
+import { useCursorPager } from "@/hooks/use-cursor-pager";
 import { copyText } from "@/lib/clipboard";
 
 export default function AdminUsersPage() {
   const navigate = useNavigate();
   const [q, setQ] = React.useState("");
   const debouncedQ = useDebouncedValue(q, 300);
-  const [cursor, setCursor] = React.useState<string | undefined>();
-  const [history, setHistory] = React.useState<string[]>([]);
-  const { data, isLoading } = useAdminUsers({ q: debouncedQ || undefined, cursor, limit: 50 });
+  const pager = useCursorPager();
+  const { data, isLoading } = useAdminUsers({ q: debouncedQ || undefined, cursor: pager.cursor, limit: 50 });
   const create = useCreateUser();
   const [dialogOpen, setDialogOpen] = React.useState(false);
 
@@ -80,11 +80,11 @@ export default function AdminUsersPage() {
             value={q}
             onChange={(e) => {
               setQ(e.target.value);
-              setCursor(undefined);
-              setHistory([]);
+              pager.reset();
             }}
             placeholder="Search users…"
             className="pl-9"
+            aria-label="Search users"
           />
         </div>
         <Button className="gap-1.5" onClick={() => setDialogOpen(true)}>
@@ -114,7 +114,7 @@ export default function AdminUsersPage() {
             </TableHeader>
             <TableBody>
               {data.items.map((u) => (
-                <TableRow key={u.id} className="cursor-pointer" onClick={() => navigate(`/app/admin/users/${u.id}`)}>
+                <TableRow key={u.id} {...linkRowProps(() => navigate(`/app/admin/users/${u.id}`))}>
                   <TableCell>
                     <div className="font-medium">{u.name}</div>
                     <div className="text-xs text-muted-foreground">{u.email}</div>
@@ -136,33 +136,20 @@ export default function AdminUsersPage() {
         )}
       </div>
 
-      {(history.length > 0 || data?.nextCursor) && (
-        <div className="flex justify-between">
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={history.length === 0}
-            onClick={() => {
-              const h = [...history];
-              const prev = h.pop();
-              setHistory(h);
-              setCursor(prev);
-            }}
-          >
+      {(pager.hasPrevious || data?.nextCursor) && (
+        <nav className="flex justify-between" aria-label="Pagination">
+          <Button variant="outline" size="sm" disabled={!pager.hasPrevious} onClick={pager.previous}>
             Previous
           </Button>
           <Button
             variant="outline"
             size="sm"
             disabled={!data?.nextCursor}
-            onClick={() => {
-              if (cursor) setHistory((h) => [...h, cursor]);
-              setCursor(data?.nextCursor ?? undefined);
-            }}
+            onClick={() => data?.nextCursor && pager.next(data.nextCursor)}
           >
             Next
           </Button>
-        </div>
+        </nav>
       )}
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>

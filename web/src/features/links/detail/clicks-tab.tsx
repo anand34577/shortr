@@ -1,4 +1,3 @@
-import * as React from "react";
 import { Download } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -8,11 +7,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { LocalTime } from "@/components/local-time";
 import { useLinkClicks, linkClicksExportUrl } from "@/features/links/api";
 import { countryFlag } from "@/features/links/detail/breakdown-bars";
+import { useCursorPager } from "@/hooks/use-cursor-pager";
+import { LoadError } from "@/components/load-error";
 
 export function ClicksTab({ linkId }: { linkId: string }) {
-  const [cursor, setCursor] = React.useState<string | undefined>(undefined);
-  const [history, setHistory] = React.useState<string[]>([]);
-  const { data, isLoading } = useLinkClicks(linkId, cursor);
+  const pager = useCursorPager();
+  const { data, isLoading, isError, refetch } = useLinkClicks(linkId, pager.cursor);
 
   return (
     <Card>
@@ -34,6 +34,8 @@ export function ClicksTab({ linkId }: { linkId: string }) {
       <CardContent>
         {isLoading ? (
           <Skeleton className="h-64 w-full" />
+        ) : isError ? (
+          <LoadError what="clicks" onRetry={() => refetch()} />
         ) : !data?.items.length ? (
           <p className="py-6 text-center text-sm text-muted-foreground">No clicks recorded yet.</p>
         ) : (
@@ -68,32 +70,19 @@ export function ClicksTab({ linkId }: { linkId: string }) {
                 </TableBody>
               </Table>
             </div>
-            <div className="mt-3 flex justify-between">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={history.length === 0}
-                onClick={() => {
-                  const prevHistory = [...history];
-                  const prev = prevHistory.pop();
-                  setHistory(prevHistory);
-                  setCursor(prev);
-                }}
-              >
+            <nav className="mt-3 flex justify-between" aria-label="Pagination">
+              <Button variant="outline" size="sm" disabled={!pager.hasPrevious} onClick={pager.previous}>
                 Previous
               </Button>
               <Button
                 variant="outline"
                 size="sm"
                 disabled={!data.nextCursor}
-                onClick={() => {
-                  if (cursor) setHistory((h) => [...h, cursor]);
-                  setCursor(data.nextCursor ?? undefined);
-                }}
+                onClick={() => data.nextCursor && pager.next(data.nextCursor)}
               >
                 Next
               </Button>
-            </div>
+            </nav>
           </>
         )}
       </CardContent>

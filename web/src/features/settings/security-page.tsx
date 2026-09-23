@@ -12,7 +12,8 @@ import { FieldError } from "@/components/field-error";
 import { LocalTime } from "@/components/local-time";
 import { SettingsNav } from "@/features/settings/settings-nav";
 import { changePasswordSchema, type ChangePasswordInput } from "@/lib/schemas";
-import { applyServerErrors } from "@/lib/apply-server-errors";
+import { applyServerErrors, toastError } from "@/lib/apply-server-errors";
+import { confirm } from "@/components/confirm-dialog";
 import { useMe } from "@/hooks/use-me";
 import { useAuthStatus } from "@/hooks/use-auth-status";
 import {
@@ -51,7 +52,32 @@ export default function SecurityPage() {
     }
   }
 
-  const canUnlink = (identities.data?.items.length ?? 0) > 1 || me.data?.mustChangePassword === false;
+  async function handleRevokeSession(id: string) {
+    try {
+      await revokeSession.mutateAsync(id);
+      toast.success("Device signed out");
+    } catch (err) {
+      toastError(err, "Couldn't sign that device out");
+    }
+  }
+
+  async function handleUnlink(id: string, issuer: string) {
+    const ok = await confirm({
+      title: "Unlink this account?",
+      description: `You won't be able to sign in with ${issuer} until you link it again.`,
+      confirmLabel: "Unlink",
+      variant: "destructive",
+    });
+    if (!ok) return;
+    try {
+      await unlink.mutateAsync(id);
+      toast.success("Account unlinked");
+    } catch (err) {
+      toastError(err, "Couldn't unlink the account");
+    }
+  }
+
+  const canUnlink =(identities.data?.items.length ?? 0) > 1 || me.data?.mustChangePassword === false;
 
   return (
     <div className="flex flex-col gap-5">
@@ -70,18 +96,18 @@ export default function SecurityPage() {
             {me.data?.hasPassword && (
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="current">Current password</Label>
-                <Input id="current" type="password" {...register("current")} />
+                <Input id="current" type="password" autoComplete="current-password" {...register("current")} />
                 <FieldError message={errors.current?.message} />
               </div>
             )}
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="next">New password</Label>
-              <Input id="next" type="password" {...register("next")} />
+              <Input id="next" type="password" autoComplete="new-password" {...register("next")} />
               <FieldError message={errors.next?.message} />
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="confirm">Confirm new password</Label>
-              <Input id="confirm" type="password" {...register("confirm")} />
+              <Input id="confirm" type="password" autoComplete="new-password" {...register("confirm")} />
               <FieldError message={errors.confirm?.message} />
             </div>
             <Button type="submit" disabled={isSubmitting} className="w-fit">
@@ -116,7 +142,7 @@ export default function SecurityPage() {
                   </p>
                 </div>
                 {!s.current && (
-                  <Button variant="ghost" size="sm" onClick={() => revokeSession.mutate(s.id)}>
+                  <Button variant="ghost" size="sm" onClick={() => handleRevokeSession(s.id)}>
                     Revoke
                   </Button>
                 )}
@@ -147,7 +173,7 @@ export default function SecurityPage() {
                   size="sm"
                   disabled={!canUnlink}
                   title={!canUnlink ? "Set a password or link another provider before unlinking" : undefined}
-                  onClick={() => unlink.mutate(id.id)}
+                  onClick={() => handleUnlink(id.id, id.issuer)}
                   className="gap-1.5"
                 >
                   <Unlink className="size-3.5" /> Unlink

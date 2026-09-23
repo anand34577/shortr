@@ -36,6 +36,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
+  linkRowProps,
 } from "@/components/ui/table";
 import { LocalTime } from "@/components/local-time";
 import { EmptyState } from "@/components/empty-state";
@@ -48,6 +49,9 @@ import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { useMe } from "@/hooks/use-me";
 import type { Link } from "@/lib/types";
 import { copyText } from "@/lib/clipboard";
+import { useCursorPager } from "@/hooks/use-cursor-pager";
+import { confirm } from "@/components/confirm-dialog";
+import { toastError } from "@/lib/apply-server-errors";
 
 export default function LinksPage() {
   const navigate = useNavigate();
@@ -65,13 +69,8 @@ export default function LinksPage() {
   const [editLink, setEditLink] = React.useState<Link | null>(null);
   const [qrLink, setQrLink] = React.useState<Link | null>(null);
   const searchRef = React.useRef<HTMLInputElement>(null);
-  const [cursor, setCursor] = React.useState<string | undefined>();
-  const [history, setHistory] = React.useState<string[]>([]);
-
-  function resetPaging() {
-    setCursor(undefined);
-    setHistory([]);
-  }
+  const pager = useCursorPager();
+  const resetPaging = pager.reset;
 
   const filters: LinkFilters = {
     q: debouncedSearch || undefined,
@@ -80,7 +79,7 @@ export default function LinksPage() {
     scope: isAdmin && allUsers ? "all" : undefined,
     sort,
     order: "desc",
-    cursor,
+    cursor: pager.cursor,
     limit: 25,
   };
   const { data, isLoading, isError, refetch } = useLinks(filters);
@@ -88,6 +87,12 @@ export default function LinksPage() {
 
   const links = data?.items ?? [];
   const hasFilters = Boolean(debouncedSearch || debouncedTag || status !== "all" || allUsers);
+
+  // Selection only makes sense for the rows on screen; bulk actions on
+  // links from another page or an old filter would be a surprise.
+  React.useEffect(() => {
+    setSelected(new Set());
+  }, [pager.cursor, debouncedSearch, debouncedTag, status, allUsers, sort]);
 
   function clearFilters() {
     setSearch("");
@@ -103,7 +108,9 @@ export default function LinksPage() {
         id: "select",
         header: () => (
           <Checkbox
-            checked={links.length > 0 && selected.size === links.length}
+            checked={
+              links.length > 0 && selected.size === links.length ? true : selected.size > 0 ? "indeterminate" : false
+            }
             onCheckedChange={(c) => toggleAll(!!c)}
             aria-label="Select all links"
           />
@@ -124,15 +131,13 @@ export default function LinksPage() {
           return (
             <div>
               <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  copyShortUrl(link);
-                }}
-                className="group flex items-center gap-1.5 font-mono text-sm text-primary"
-                title={link.shortUrl}
+                onClick={() => copyShortUrl(link)}
+                className="group flex items-center gap-1.5 rounded-sm font-mono text-sm text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                title={`Copy ${link.shortUrl}`}
+                aria-label={`Copy ${link.shortUrl}`}
               >
                 {link.shortUrl.replace(/^https?:\/\//, "")}
-                <Copy className="size-3.5 opacity-0 group-hover:opacity-100" />
+                <Copy className="size-3.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" aria-hidden="true" />
               </button>
               {link.title && <div className="max-w-56 truncate text-xs text-muted-foreground">{link.title}</div>}
             </div>
@@ -186,9 +191,7 @@ export default function LinksPage() {
         id: "actions",
         header: "",
         cell: ({ row }) => (
-          <div onClick={(e) => e.stopPropagation()}>
-            <LinkRowMenu link={row.original} onEdit={() => setEditLink(row.original)} onShowQr={() => setQrLink(row.original)} />
-          </div>
+          <LinkRowMenu link={row.original} onEdit={() => setEditLink(row.original)} onShowQr={() => setQrLink(row.original)} />
         ),
       },
     ],
@@ -204,12 +207,16 @@ export default function LinksPage() {
 
   React.useEffect(() => {
     function onKey(e: KeyboardEvent) {
+      // Single-key shortcuts must not fire with modifiers (Ctrl+C is copy),
+      // while typing, or behind an open dialog or menu.
+      if (e.metaKey || e.ctrlKey || e.altKey || e.defaultPrevented) return;
       const target = e.target as HTMLElement;
-      const typing = ["INPUT", "TEXTAREA"].includes(target.tagName);
-      if (e.key === "/" && !typing) {
+      if (target.closest("input, textarea, select, [contenteditable=true], [role=dialog], [role=menu]")) return;
+      if (e.key === "/") {
         e.preventDefault();
         searchRef.current?.focus();
-      } else if (e.key.toLowerCase() === "c" && !typing) {
+      } else if (e.key.toLowerCase() === "c") {
+        e.preventDefault();
         setCreateOpen(true);
       }
     }
@@ -238,6 +245,15 @@ export default function LinksPage() {
 
   async function bulkAction(action: "disable" | "enable" | "delete" | "tag", tagName?: string) {
     const ids = Array.from(selected);
+    if (action === "delete") {
+      const ok = await confirm({
+        title: `Delete ${ids.length} link${ids.length === 1 ? "" : "s"}?`,
+        description: "They will stop redirecting. You can restore them from the Deleted filter.",
+        confirmLabel: "Delete",
+        variant: "destructive",
+      });
+      if (!ok) return;
+    }
     try {
       const res = await bulk.mutateAsync({ ids, action, tag: tagName });
       const failed = res.items.filter((r) => !r.ok).length;
@@ -247,7 +263,7 @@ export default function LinksPage() {
       if (failed > 0) toast.error(`${failed} link${failed === 1 ? "" : "s"} could not be ${verb}`);
       setSelected(new Set());
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Bulk action failed");
+      toastError(err, "Bulk action failed");
     }
   }
 
@@ -256,16 +272,30 @@ export default function LinksPage() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-xl font-semibold tracking-tight">Links</h1>
-          <p className="text-sm text-muted-foreground">{data?.total ?? links.length} links</p>
+          <p className="text-sm text-muted-foreground">
+            {!data
+              ? "\u00a0"
+              : data.total != null
+                ? pluralLinks(data.total)
+                : pager.hasPrevious || data.nextCursor
+                  ? `Page ${pager.page} \u00b7 ${pluralLinks(links.length)} shown`
+                  : pluralLinks(links.length)}
+          </p>
         </div>
         <Button onClick={() => setCreateOpen(true)} className="gap-2">
           <Plus className="size-4" /> New link
         </Button>
       </div>
 
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-        <div className="relative flex-1">
+      <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
+        <div className="relative col-span-2 flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <kbd
+            className="pointer-events-none absolute right-2.5 top-1/2 hidden -translate-y-1/2 rounded border border-border px-1.5 text-xs text-muted-foreground sm:block"
+            aria-hidden="true"
+          >
+            /
+          </kbd>
           <Input
             ref={searchRef}
             value={search}
@@ -273,7 +303,8 @@ export default function LinksPage() {
               setSearch(e.target.value);
               resetPaging();
             }}
-            placeholder="Search code, title, target… (press /)"
+            placeholder="Search code, title, target…"
+            aria-keyshortcuts="/"
             className="pl-9"
             aria-label="Search links"
           />
@@ -341,7 +372,7 @@ export default function LinksPage() {
       </div>
 
       {selected.size > 0 && (
-        <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm">
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm">
           <span className="font-medium" aria-live="polite">{selected.size} selected</span>
           <Button variant="outline" size="sm" className="gap-1.5" onClick={() => bulkAction("disable")}>
             <Ban className="size-3.5" /> Disable
@@ -417,16 +448,8 @@ export default function LinksPage() {
                   {table.getRowModel().rows.map((row) => (
                     <TableRow
                       key={row.id}
-                      className="cursor-pointer focus-visible:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-                      tabIndex={0}
-                      role="link"
-                      onClick={() => navigate(`/app/links/${row.original.id}`)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          navigate(`/app/links/${row.original.id}`);
-                        }
-                      }}
+                      {...linkRowProps(() => navigate(`/app/links/${row.original.id}`))}
+                      data-state={selected.has(row.original.id) ? "selected" : undefined}
                     >
                       {row.getVisibleCells().map((cell) => (
                         <TableCell key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</TableCell>
@@ -461,33 +484,20 @@ export default function LinksPage() {
         )}
       </div>
 
-      {(history.length > 0 || data?.nextCursor) && (
-        <div className="flex justify-between">
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={history.length === 0}
-            onClick={() => {
-              const h = [...history];
-              const prev = h.pop();
-              setHistory(h);
-              setCursor(prev);
-            }}
-          >
+      {(pager.hasPrevious || data?.nextCursor) && (
+        <nav className="flex justify-between" aria-label="Pagination">
+          <Button variant="outline" size="sm" disabled={!pager.hasPrevious} onClick={pager.previous}>
             Previous
           </Button>
           <Button
             variant="outline"
             size="sm"
             disabled={!data?.nextCursor}
-            onClick={() => {
-              if (cursor) setHistory((h) => [...h, cursor]);
-              setCursor(data?.nextCursor ?? undefined);
-            }}
+            onClick={() => data?.nextCursor && pager.next(data.nextCursor)}
           >
             Next
           </Button>
-        </div>
+        </nav>
       )}
 
       <LinkFormDialog open={createOpen} onOpenChange={setCreateOpen} />
@@ -503,4 +513,8 @@ export default function LinksPage() {
       </Dialog>
     </div>
   );
+}
+
+function pluralLinks(n: number) {
+  return `${n.toLocaleString()} link${n === 1 ? "" : "s"}`;
 }
