@@ -59,7 +59,7 @@ export default function SetupPage() {
                 <span
                   className={cn(
                     "flex size-6 items-center justify-center rounded-full text-xs font-semibold",
-                    i < step ? "bg-success/20 text-success" : i === step ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground",
+                    i < step ? "bg-success/10 text-success" : i === step ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground",
                   )}
                 >
                   {i < step ? <CheckCircle2 className="size-4" /> : i + 1}

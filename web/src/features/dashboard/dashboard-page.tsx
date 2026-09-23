@@ -1,8 +1,8 @@
 import * as React from "react";
-import { useNavigate } from "react-router-dom";
+import { Link as RouterLink, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { Area, AreaChart, ResponsiveContainer } from "recharts";
-import { ArrowRight, Link2, TrendingDown, TrendingUp, Users, MousePointerClick, Globe2 } from "lucide-react";
+import { ArrowRight, Copy, Link2, TrendingDown, TrendingUp, Users, MousePointerClick, Globe2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,12 +15,14 @@ import { RangePicker, rangeToDates, type RangeKey } from "@/features/links/detai
 import { countryFlag } from "@/features/links/detail/breakdown-bars";
 import { targetUrlSchema } from "@/lib/schemas";
 import { copyText } from "@/lib/clipboard";
+import { ApiError } from "@/lib/api";
+import { toastError } from "@/lib/apply-server-errors";
 
 export default function DashboardPage() {
   const navigate = useNavigate();
   const [quickUrl, setQuickUrl] = React.useState("");
   const [quickError, setQuickError] = React.useState<string | undefined>();
-  const [lastCreated, setLastCreated] = React.useState<{ shortUrl: string } | null>(null);
+  const [lastCreated, setLastCreated] = React.useState<{ id: string; shortUrl: string } | null>(null);
   const create = useCreateLink();
   const [range, setRange] = React.useState<RangeKey>("7d");
   const { from, to } = rangeToDates(range);
@@ -37,14 +39,16 @@ export default function DashboardPage() {
     setQuickError(undefined);
     try {
       const link = await create.mutateAsync({ targetUrl: parsed.data });
-      setLastCreated({ shortUrl: link.shortUrl });
+      setLastCreated({ id: link.id, shortUrl: link.shortUrl });
       const copied = await copyText(link.shortUrl);
       toast.success(copied ? "Shortened and copied to clipboard" : "Short link created", {
         description: copied ? undefined : link.shortUrl,
       });
       setQuickUrl("");
-    } catch {
-      toast.error("Couldn't shorten that URL");
+    } catch (err) {
+      // field errors (e.g. a blocked domain) belong under the input
+      if (err instanceof ApiError && err.fields?.target_url) setQuickError(err.fields.target_url);
+      else toastError(err, "Couldn't shorten that URL");
     }
   }
 
@@ -57,15 +61,22 @@ export default function DashboardPage() {
 
       <Card className="border-primary/20 bg-linear-to-br from-primary/5 to-transparent">
         <CardContent className="p-6">
-          <h1 className="text-lg font-semibold">Shorten a link</h1>
+          <h2 className="text-lg font-semibold">Shorten a link</h2>
           <p className="text-sm text-muted-foreground">Paste a URL and go — everything else is optional.</p>
-          <form onSubmit={handleShorten} className="mt-4 flex flex-col gap-2 sm:flex-row">
+          <form onSubmit={handleShorten} className="mt-4 flex flex-col gap-2 sm:flex-row" noValidate>
             <Input
+              type="url"
+              inputMode="url"
               value={quickUrl}
-              onChange={(e) => setQuickUrl(e.target.value)}
+              onChange={(e) => {
+                setQuickUrl(e.target.value);
+                if (quickError) setQuickError(undefined);
+              }}
               placeholder="https://example.com/your/long/link"
               className="flex-1"
               aria-label="URL to shorten"
+              aria-invalid={!!quickError}
+              aria-describedby={quickError ? "quick-url-error" : undefined}
               autoFocus
             />
             <Button type="submit" disabled={create.isPending} className="gap-1.5">
@@ -73,17 +84,28 @@ export default function DashboardPage() {
               <ArrowRight className="size-4" />
             </Button>
           </form>
-          {quickError && <p className="mt-1.5 text-xs text-destructive">{quickError}</p>}
+          {quickError && (
+            <p id="quick-url-error" role="alert" className="mt-1.5 text-xs text-destructive">
+              {quickError}
+            </p>
+          )}
           {lastCreated && (
             <div className="mt-3 flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2 text-sm">
-              <Link2 className="size-4 text-primary" />
-              <span className="font-mono">{lastCreated.shortUrl}</span>
+              <Link2 className="size-4 shrink-0 text-primary" aria-hidden="true" />
+              <span className="min-w-0 truncate font-mono">{lastCreated.shortUrl}</span>
               <Button
                 variant="ghost"
                 size="sm"
-                className="ml-auto"
-                onClick={() => navigate("/app/links")}
+                className="ml-auto shrink-0"
+                aria-label={`Copy ${lastCreated.shortUrl}`}
+                onClick={async () => {
+                  const copied = await copyText(lastCreated.shortUrl);
+                  toast[copied ? "success" : "error"](copied ? "Copied to clipboard" : "Copy failed");
+                }}
               >
+                <Copy className="size-4" />
+              </Button>
+              <Button variant="ghost" size="sm" className="shrink-0" onClick={() => navigate(`/app/links/${lastCreated.id}`)}>
                 Customize
               </Button>
             </div>
@@ -164,9 +186,9 @@ export default function DashboardPage() {
               {recent.data.items.map((item) => (
                 <li key={item.id} className="flex items-center gap-3 py-2.5 text-sm">
                   <span aria-hidden="true">{countryFlag(item.country)}</span>
-                  <button className="font-mono text-primary hover:underline" onClick={() => navigate(`/app/links/${item.linkId}`)}>
+                  <RouterLink className="font-mono text-primary hover:underline" to={`/app/links/${item.linkId}`}>
                     {item.code}
-                  </button>
+                  </RouterLink>
                   <span className="text-muted-foreground">from {item.referrerHost || "direct"}</span>
                   <span className="ml-auto text-xs text-muted-foreground">
                     <LocalTime iso={item.ts} relative />
@@ -212,8 +234,9 @@ function StatTile({
             </span>
             {typeof delta === "number" && (
               <span className={`flex items-center gap-0.5 text-xs ${delta >= 0 ? "text-success" : "text-destructive"}`}>
-                {delta >= 0 ? <TrendingUp className="size-3" /> : <TrendingDown className="size-3" />}
-                {Math.abs(delta).toFixed(0)}%
+                {delta >= 0 ? <TrendingUp className="size-3" aria-hidden="true" /> : <TrendingDown className="size-3" aria-hidden="true" />}
+                <span className="sr-only">{delta >= 0 ? "up" : "down"}</span>
+                {Math.abs(delta).toFixed(0)}%<span className="sr-only"> vs. previous period</span>
               </span>
             )}
           </div>

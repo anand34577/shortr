@@ -14,11 +14,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { FieldError } from "@/components/field-error";
 import { AdminNav } from "@/features/admin/admin-nav";
 import { useAdminSettings, useUpdateAdminSettings } from "@/features/admin/api";
+import { LoadError } from "@/components/load-error";
 import { adminSettingsSchema, type AdminSettingsInput } from "@/lib/schemas";
 import { applyServerErrors } from "@/lib/apply-server-errors";
 
 export default function AdminSettingsPage() {
-  const { data, isLoading } = useAdminSettings();
+  const { data, isLoading, isError, refetch } = useAdminSettings();
   const update = useUpdateAdminSettings();
 
   const {
@@ -64,8 +65,10 @@ export default function AdminSettingsPage() {
         <AdminNav />
       </div>
 
-      {isLoading || !data ? (
+      {isLoading ? (
         <Skeleton className="h-96 w-full" />
+      ) : isError || !data ? (
+        <LoadError what="settings" onRetry={() => refetch()} />
       ) : (
         <form onSubmit={handleSubmit(onSubmit, (errs) => toast.error(`Fix these fields: ${Object.keys(errs).join(", ")}`))} className="flex flex-col gap-5" noValidate>
           <Card className="max-w-2xl">

@@ -20,8 +20,14 @@ export function applyServerErrors<T extends FieldValues>(
       }
       return;
     }
-    toast.error(err.message || err.code);
-    return;
   }
-  toast.error("Something went wrong. Please try again.");
+  toastError(err);
+}
+
+/**
+ * Error feedback for actions that aren't forms (menu items, toggles,
+ * one-click buttons). `fallback` is used when the server gave no message.
+ */
+export function toastError(err: unknown, fallback = "Something went wrong. Please try again.") {
+  toast.error(err instanceof ApiError ? err.message || fallback : fallback);
 }

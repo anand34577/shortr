@@ -1,7 +1,7 @@
 import * as React from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { ArrowLeft, Copy, ExternalLink, Ban, Trash2, CheckCircle } from "lucide-react";
+import { ArrowLeft, Copy, ExternalLink, Ban, Trash2, CheckCircle, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -13,6 +13,7 @@ import { QrPanel } from "@/features/links/qr-panel";
 import { LinkFormDialog } from "@/features/links/link-form-dialog";
 import { confirm } from "@/components/confirm-dialog";
 import { copyText } from "@/lib/clipboard";
+import { toastError } from "@/lib/apply-server-errors";
 import { OverviewTab } from "@/features/links/detail/overview-tab";
 import { AudienceTab } from "@/features/links/detail/audience-tab";
 import { ReferrersTab } from "@/features/links/detail/referrers-tab";
@@ -66,18 +67,36 @@ export default function LinkDetailPage() {
       variant: "destructive",
     });
     if (!confirmed) return;
-    await del.mutateAsync(currentLink.id);
+    try {
+      await del.mutateAsync(currentLink.id);
+    } catch (err) {
+      toastError(err, "Couldn't delete the link");
+      return;
+    }
     toast("Link deleted", {
       duration: 8000,
-      action: { label: "Undo", onClick: () => restore.mutate(currentLink.id) },
+      action: { label: "Undo", onClick: () => handleRestore() },
     });
     navigate("/app/links");
   }
 
+  async function handleRestore() {
+    try {
+      await restore.mutateAsync(currentLink.id);
+      toast.success("Link restored");
+    } catch (err) {
+      toastError(err, "Couldn't restore the link");
+    }
+  }
+
   async function toggleStatus() {
-    const next = link!.status === "active" ? "disabled" : "active";
-    await update.mutateAsync({ status: next } as never);
-    toast.success(next === "active" ? "Link enabled" : "Link disabled");
+    const next = currentLink.status === "active" ? "disabled" : "active";
+    try {
+      await update.mutateAsync({ status: next } as never);
+      toast.success(next === "active" ? "Link enabled" : "Link disabled");
+    } catch (err) {
+      toastError(err, `Couldn't ${next === "active" ? "enable" : "disable"} the link`);
+    }
   }
 
   return (
@@ -89,11 +108,22 @@ export default function LinkDetailPage() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <button onClick={copyShort} className="flex items-center gap-1.5 font-mono text-lg font-semibold text-primary">
-              {link.shortUrl.replace(/^https?:\/\//, "")}
-              <Copy className="size-4" />
-            </button>
-            <Badge variant={link.status === "active" ? "success" : "secondary"}>{link.status}</Badge>
+            <h1>
+              <button
+                onClick={copyShort}
+                className="flex items-center gap-1.5 rounded-sm font-mono text-lg font-semibold text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                aria-label={`Copy ${link.shortUrl}`}
+                title="Copy short link"
+              >
+                {link.shortUrl.replace(/^https?:\/\//, "")}
+                <Copy className="size-4" aria-hidden="true" />
+              </button>
+            </h1>
+            {link.deletedAt ? (
+              <Badge variant="destructive">deleted</Badge>
+            ) : (
+              <Badge variant={link.status === "active" ? "success" : "secondary"}>{link.status}</Badge>
+            )}
             {link.hasPassword && <Badge variant="outline">Password protected</Badge>}
           </div>
           <a
@@ -109,18 +139,24 @@ export default function LinkDetailPage() {
             Created <LocalTime iso={link.createdAt} relative /> · {link.clickCount.toLocaleString()} clicks
           </p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={() => setEditOpen(true)}>
-            Edit
+        {link.deletedAt ? (
+          <Button variant="outline" onClick={handleRestore} disabled={restore.isPending} className="gap-1.5">
+            <RotateCcw className="size-4" /> Restore
           </Button>
-          <Button variant="outline" onClick={toggleStatus} className="gap-1.5">
-            {link.status === "active" ? <Ban className="size-4" /> : <CheckCircle className="size-4" />}
-            {link.status === "active" ? "Disable" : "Enable"}
-          </Button>
-          <Button variant="outline" className="gap-1.5 text-destructive" onClick={handleDelete}>
-            <Trash2 className="size-4" /> Delete
-          </Button>
-        </div>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" onClick={() => setEditOpen(true)}>
+              Edit
+            </Button>
+            <Button variant="outline" onClick={toggleStatus} disabled={update.isPending} className="gap-1.5">
+              {link.status === "active" ? <Ban className="size-4" /> : <CheckCircle className="size-4" />}
+              {link.status === "active" ? "Disable" : "Enable"}
+            </Button>
+            <Button variant="outline" className="gap-1.5 text-destructive" onClick={handleDelete} disabled={del.isPending}>
+              <Trash2 className="size-4" /> Delete
+            </Button>
+          </div>
+        )}
       </div>
 
       <Tabs defaultValue="overview">

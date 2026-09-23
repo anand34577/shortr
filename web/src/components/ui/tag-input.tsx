@@ -60,7 +60,7 @@ export function TagInput({
               type="button"
               aria-label={`Remove tag ${tag}`}
               onClick={() => removeTag(tag)}
-              className="rounded-full p-0.5 hover:bg-black/10 dark:hover:bg-white/10"
+              className="rounded-full p-0.5 hover:bg-black/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:hover:bg-white/10"
             >
               <X className="size-3" />
             </button>
@@ -83,8 +83,12 @@ export function TagInput({
             }
           }}
           onFocus={() => setOpen(true)}
-          onBlur={() => setTimeout(() => setOpen(false), 100)}
-          placeholder={value.length === 0 ? placeholder : ""}
+          onBlur={() => {
+            // a typed-but-uncommitted tag would otherwise be silently lost on save
+            if (input.trim()) addTag(input);
+            setTimeout(() => setOpen(false), 100);
+          }}
+          placeholder={value.length >= max ? `Limit of ${max} tags reached` : value.length === 0 ? placeholder : ""}
           className="flex-1 min-w-24 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
           disabled={value.length >= max}
         />

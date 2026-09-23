@@ -16,7 +16,8 @@ import { LocalTime } from "@/components/local-time";
 import { EmptyState } from "@/components/empty-state";
 import { SettingsNav } from "@/features/settings/settings-nav";
 import { createApiKeySchema, apiKeyScopes, type CreateApiKeyInput } from "@/lib/schemas";
-import { applyServerErrors } from "@/lib/apply-server-errors";
+import { applyServerErrors, toastError } from "@/lib/apply-server-errors";
+import { confirm } from "@/components/confirm-dialog";
 import { useApiKeys, useCreateApiKey, useRevokeApiKey } from "@/features/settings/api";
 import type { ApiKeyCreated } from "@/lib/types";
 import { copyText } from "@/lib/clipboard";
@@ -39,6 +40,22 @@ export default function ApiKeysPage() {
     resolver: zodResolver(createApiKeySchema),
     defaultValues: { name: "", scopes: ["links:read", "links:write", "stats:read"] },
   });
+
+  async function handleRevoke(id: string, name: string) {
+    const ok = await confirm({
+      title: `Revoke “${name}”?`,
+      description: "Anything using this key stops working immediately. This cannot be undone.",
+      confirmLabel: "Revoke key",
+      variant: "destructive",
+    });
+    if (!ok) return;
+    try {
+      await revoke.mutateAsync(id);
+      toast.success("API key revoked");
+    } catch (err) {
+      toastError(err, "Couldn't revoke the key");
+    }
+  }
 
   async function onSubmit(values: CreateApiKeyInput) {
     try {
@@ -98,7 +115,13 @@ export default function ApiKeysPage() {
                       "Never used"
                     )}
                   </div>
-                  <Button variant="ghost" size="icon" aria-label={`Revoke ${k.name}`} onClick={() => revoke.mutate(k.id)}>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label={`Revoke ${k.name}`}
+                    title="Revoke key"
+                    onClick={() => handleRevoke(k.id, k.name)}
+                  >
                     <Trash2 className="size-4 text-destructive" />
                   </Button>
                 </div>
@@ -128,7 +151,7 @@ export default function ApiKeysPage() {
                 render={({ field }) => (
                   <div className="flex flex-col gap-2">
                     {apiKeyScopes.map((scope) => (
-                      <label key={scope} className="flex items-center gap-2 text-sm">
+                      <label key={scope} className="flex min-h-8 cursor-pointer items-center gap-2 text-sm">
                         <Checkbox
                           checked={field.value.includes(scope)}
                           onCheckedChange={(c) =>

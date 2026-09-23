@@ -1,5 +1,6 @@
 import { NavLink, useLocation } from "react-router-dom";
 import {
+  Bell,
   LayoutDashboard,
   Link2,
   Settings,
@@ -30,7 +31,7 @@ const settingsNav = [
   { to: "/app/settings/security", label: "Security", icon: ShieldCheck },
   { to: "/app/settings/api-keys", label: "API Keys", icon: KeyRound },
   { to: "/app/settings/mcp", label: "MCP", icon: Plug },
-  { to: "/app/settings/notifications", label: "Notifications", icon: Settings },
+  { to: "/app/settings/notifications", label: "Notifications", icon: Bell },
 ];
 
 const adminNav = [
@@ -126,6 +127,7 @@ function NavGroup({
             )
           }
           title={collapsed ? item.label : undefined}
+          aria-label={collapsed ? item.label : undefined}
         >
           <item.icon className="size-4 shrink-0" />
           {!collapsed && <span className="truncate">{item.label}</span>}

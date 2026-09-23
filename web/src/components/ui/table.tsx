@@ -68,4 +68,33 @@ const TableCaption = React.forwardRef<HTMLTableCaptionElement, React.HTMLAttribu
 );
 TableCaption.displayName = "TableCaption";
 
-export { Table, TableHeader, TableBody, TableFooter, TableHead, TableRow, TableCell, TableCaption };
+const INTERACTIVE = "a, button, input, label, select, textarea, [role=checkbox], [role=menuitem]";
+
+/**
+ * Props that make a whole row open a destination by mouse or keyboard,
+ * without hijacking clicks and key presses meant for controls inside it
+ * (checkboxes, copy buttons, row menus — including portalled menu items,
+ * whose React events still bubble through the row).
+ */
+function linkRowProps(onActivate: () => void): React.HTMLAttributes<HTMLTableRowElement> {
+  return {
+    tabIndex: 0,
+    role: "link",
+    className:
+      "cursor-pointer focus-visible:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+    onClick: (e) => {
+      const target = e.target as HTMLElement;
+      if (!e.currentTarget.contains(target)) return; // portalled content (menus, dialogs)
+      if (target !== e.currentTarget && target.closest(INTERACTIVE)) return;
+      if (window.getSelection()?.toString()) return; // let people select text in a row
+      onActivate();
+    },
+    onKeyDown: (e) => {
+      if (e.target !== e.currentTarget || e.key !== "Enter") return;
+      e.preventDefault();
+      onActivate();
+    },
+  };
+}
+
+export { Table, TableHeader, TableBody, TableFooter, TableHead, TableRow, TableCell, TableCaption, linkRowProps };

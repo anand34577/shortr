@@ -12,6 +12,7 @@ import {
 import { confirm } from "@/components/confirm-dialog";
 import { useDeleteLink, useUpdateLink, useRestoreLink, usePurgeLink } from "@/features/links/api";
 import { useMe } from "@/hooks/use-me";
+import { toastError } from "@/lib/apply-server-errors";
 import type { Link } from "@/lib/types";
 
 export function LinkRowMenu({
@@ -32,19 +33,36 @@ export function LinkRowMenu({
 
   async function toggleStatus() {
     const next = link.status === "active" ? "disabled" : "active";
-    await update.mutateAsync({ status: next } as never);
-    toast.success(next === "active" ? "Link enabled" : "Link disabled");
+    try {
+      await update.mutateAsync({ status: next } as never);
+      toast.success(next === "active" ? "Link enabled" : "Link disabled");
+    } catch (err) {
+      toastError(err, `Couldn't ${next === "active" ? "enable" : "disable"} the link`);
+    }
   }
 
   async function handleDelete() {
-    await del.mutateAsync(link.id);
+    try {
+      await del.mutateAsync(link.id);
+    } catch (err) {
+      toastError(err, "Couldn't delete the link");
+      return;
+    }
     toast("Link deleted", {
       duration: 8000,
-      action: {
-        label: "Undo",
-        onClick: () => restore.mutate(link.id),
-      },
+      action: { label: "Undo", onClick: () => handleRestore() },
     });
+  }
+
+  // mutateAsync rather than mutate(..., callbacks): the row (and this menu)
+  // usually unmounts once the delete lands, which would drop the callbacks.
+  async function handleRestore() {
+    try {
+      await restore.mutateAsync(link.id);
+      toast.success("Link restored");
+    } catch (err) {
+      toastError(err, "Couldn't restore the link");
+    }
   }
 
   return (
@@ -67,7 +85,7 @@ export function LinkRowMenu({
         <DropdownMenuSeparator />
         {link.deletedAt ? (
           <>
-            <DropdownMenuItem onClick={() => restore.mutate(link.id)}>
+            <DropdownMenuItem onClick={handleRestore}>
               <RotateCcw className="size-4" /> Restore
             </DropdownMenuItem>
             {isAdmin && (
@@ -80,7 +98,13 @@ export function LinkRowMenu({
                     confirmLabel: "Delete permanently",
                     variant: "destructive",
                   });
-                  if (ok) purge.mutate(link.id, { onSuccess: () => toast.success("Link purged") });
+                  if (!ok) return;
+                  try {
+                    await purge.mutateAsync(link.id);
+                    toast.success("Link permanently deleted");
+                  } catch (err) {
+                    toastError(err, "Couldn't delete the link");
+                  }
                 }}
               >
                 <Trash2 className="size-4" /> Purge permanently

@@ -61,7 +61,10 @@ export function useRestoreLink() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => api.post(`/api/v1/links/${id}/restore`, {}),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["links"] }),
+    onSuccess: (_, id) => {
+      qc.invalidateQueries({ queryKey: ["links"] });
+      qc.invalidateQueries({ queryKey: ["link", id] });
+    },
   });
 }
 

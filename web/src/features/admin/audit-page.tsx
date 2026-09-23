@@ -11,13 +11,13 @@ import { EmptyState } from "@/components/empty-state";
 import { AdminNav } from "@/features/admin/admin-nav";
 import { useAuditLog } from "@/features/admin/api";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
+import { useCursorPager } from "@/hooks/use-cursor-pager";
 
 export default function AuditPage() {
   const [action, setAction] = React.useState("");
   const debouncedAction = useDebouncedValue(action, 300);
-  const [cursor, setCursor] = React.useState<string | undefined>();
-  const [history, setHistory] = React.useState<string[]>([]);
-  const { data, isLoading } = useAuditLog({ cursor, action: debouncedAction || undefined });
+  const pager = useCursorPager();
+  const { data, isLoading } = useAuditLog({ cursor: pager.cursor, action: debouncedAction || undefined });
 
   return (
     <div className="flex flex-col gap-5">
@@ -30,11 +30,11 @@ export default function AuditPage() {
         value={action}
         onChange={(e) => {
           setAction(e.target.value);
-          setCursor(undefined);
-          setHistory([]);
+          pager.reset();
         }}
         placeholder="Filter by action (e.g. link.create, user.disable)"
         className="max-w-sm"
+        aria-label="Filter by action"
       />
 
       <Card>
@@ -44,7 +44,11 @@ export default function AuditPage() {
               <Skeleton className="h-64 w-full" />
             </div>
           ) : !data?.items.length ? (
-            <EmptyState icon={FileClock} title="No audit entries" />
+            <EmptyState
+              icon={FileClock}
+              title={debouncedAction ? "No entries match that action" : "No audit entries yet"}
+              description={debouncedAction ? "Check the spelling, or clear the filter to see everything." : undefined}
+            />
           ) : (
             <>
               <Table>
@@ -75,32 +79,19 @@ export default function AuditPage() {
                   ))}
                 </TableBody>
               </Table>
-              <div className="flex justify-between p-3">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={history.length === 0}
-                  onClick={() => {
-                    const h = [...history];
-                    const prev = h.pop();
-                    setHistory(h);
-                    setCursor(prev);
-                  }}
-                >
+              <nav className="flex justify-between p-3" aria-label="Pagination">
+                <Button variant="outline" size="sm" disabled={!pager.hasPrevious} onClick={pager.previous}>
                   Previous
                 </Button>
                 <Button
                   variant="outline"
                   size="sm"
                   disabled={!data.nextCursor}
-                  onClick={() => {
-                    if (cursor) setHistory((h) => [...h, cursor]);
-                    setCursor(data.nextCursor ?? undefined);
-                  }}
+                  onClick={() => data.nextCursor && pager.next(data.nextCursor)}
                 >
                   Next
                 </Button>
-              </div>
+              </nav>
             </>
           )}
         </CardContent>
