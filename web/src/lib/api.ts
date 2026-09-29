@@ -111,6 +111,9 @@ export async function apiFetch<T>(path: string, init: ApiFetchInit = {}): Promis
       const next = encodeURIComponent(location.pathname + location.search);
       location.href = `/app/login?next=${next}`;
     }
+    if (res.status === 403 && data?.error?.code === "MFA_ENROLLMENT_REQUIRED" && !location.pathname.startsWith("/app/settings/security")) {
+      location.href = "/app/settings/security?enroll=1";
+    }
     if (res.status === 403 && data?.error?.code === "SUDO_REQUIRED" && sudoPrompt && !init.sudoRetried) {
       const password = await sudoPrompt();
       if (password !== null) {

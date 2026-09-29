@@ -12,6 +12,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"golang.org/x/sync/singleflight"
+
 	"shortr/internal/auth"
 	"shortr/internal/store"
 	"shortr/internal/validate"
@@ -49,6 +51,23 @@ type Service struct {
 	cfg     Config
 	metrics CacheMetrics
 	hits    sync.Map // link ID -> *hitCounter: live click counter for max_clicks links
+	loads   singleflight.Group
+	policy  atomic.Pointer[Policy]
+}
+
+// Policy is the admin-editable part of link creation (Admin → Settings),
+// swapped atomically when settings are saved.
+type Policy struct {
+	BlockedDomains        []string
+	DefaultRedirectStatus int
+	MaxLinksPerUser       int
+}
+
+func (s *Service) SetPolicy(p Policy) {
+	if p.DefaultRedirectStatus == 0 {
+		p.DefaultRedirectStatus = 302
+	}
+	s.policy.Store(&p)
 }
 
 // ConsumeClick reserves one click against a link's max_clicks limit and
@@ -113,7 +132,9 @@ func NewService(st *store.Store, cfg Config) *Service {
 	if cfg.MaxURLLength == 0 {
 		cfg.MaxURLLength = 2048
 	}
-	return &Service{store: st, cache: NewCache(cfg.CacheCapacity), cfg: cfg, metrics: noopCacheMetrics{}}
+	svc := &Service{store: st, cache: NewCache(cfg.CacheCapacity), cfg: cfg, metrics: noopCacheMetrics{}}
+	svc.SetPolicy(Policy{BlockedDomains: cfg.BlockedDomains, DefaultRedirectStatus: cfg.DefaultRedirectStatus, MaxLinksPerUser: cfg.MaxLinksPerUser})
+	return svc
 }
 
 func (s *Service) Cache() *Cache { return s.cache }
@@ -142,15 +163,16 @@ type CreateInput struct {
 
 func (s *Service) Create(ctx context.Context, actorUserID *string, actorIP string, in CreateInput) (*store.Link, error) {
 	verrs := validate.Errors{}
+	pol := s.policy.Load()
 
-	target, err := validate.TargetURL(in.TargetURL, s.cfg.MaxURLLength, s.cfg.AllowPrivateTargets, s.cfg.BlockedDomains, s.cfg.BaseHost)
+	target, err := validate.TargetURL(in.TargetURL, s.cfg.MaxURLLength, s.cfg.AllowPrivateTargets, pol.BlockedDomains, s.cfg.BaseHost)
 	if err != nil {
 		verrs.Add("target_url", err.Error())
 	}
 
 	redirectStatus := in.RedirectStatus
 	if redirectStatus == 0 {
-		redirectStatus = s.cfg.DefaultRedirectStatus
+		redirectStatus = pol.DefaultRedirectStatus
 	}
 	if redirectStatus != 301 && redirectStatus != 302 && redirectStatus != 307 && redirectStatus != 308 {
 		verrs.Add("redirect_status", "must be one of 301, 302, 307, 308")
@@ -209,12 +231,12 @@ func (s *Service) Create(ctx context.Context, actorUserID *string, actorIP strin
 		return nil, &ValidationError{Errors: verrs}
 	}
 
-	if actorUserID != nil && s.cfg.MaxLinksPerUser > 0 {
+	if actorUserID != nil && pol.MaxLinksPerUser > 0 {
 		n, err := s.store.CountLinksForUser(ctx, *actorUserID)
 		if err != nil {
 			return nil, err
 		}
-		if n >= s.cfg.MaxLinksPerUser {
+		if n >= pol.MaxLinksPerUser {
 			return nil, ErrLimitReached
 		}
 	}
@@ -321,15 +343,27 @@ func (s *Service) ResolveForRedirect(ctx context.Context, code string) (*store.L
 		return e.Link, nil
 	}
 	s.metrics.IncCacheMiss()
-	l, err := s.store.GetLinkByCode(ctx, code)
-	if err != nil {
-		if errors.Is(err, store.ErrNotFound) {
-			s.cache.PutMissing(code)
+	// Collapse concurrent misses for one code into a single DB query, so a
+	// link going viral (or a cache flush) can't stampede the database.
+	v, err, _ := s.loads.Do(toLower(code), func() (any, error) {
+		// shared by every waiter: one visitor hanging up must not fail the
+		// rest, but a stuck database must not hold them forever either
+		lctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cancel()
+		l, err := s.store.GetLinkByCode(lctx, code)
+		if err != nil {
+			if errors.Is(err, store.ErrNotFound) {
+				s.cache.PutMissing(code)
+			}
+			return nil, err
 		}
+		s.cache.Put(l.Code, l)
+		return l, nil
+	})
+	if err != nil {
 		return nil, err
 	}
-	s.cache.Put(l.Code, l)
-	return l, nil
+	return v.(*store.Link), nil
 }
 
 func (s *Service) Get(ctx context.Context, id string) (*store.Link, error) {

@@ -78,6 +78,11 @@ func resolveClientIP(r *http.Request, trusted []*net.IPNet, header string) net.I
 	}
 
 	hv := r.Header.Get(header)
+	if hv == "" && header != "X-Forwarded-For" {
+		// e.g. CF-Connecting-IP for tunnel traffic, but VPN/LAN requests to
+		// the console arrive through the same proxy without it
+		hv = r.Header.Get("X-Forwarded-For")
+	}
 	if hv == "" {
 		return remote
 	}
@@ -203,7 +208,7 @@ func (s *Server) securityHeadersMiddleware(next http.Handler) http.Handler {
 		if strings.HasPrefix(r.URL.Path, "/app") || r.URL.Path == "/" {
 			h.Set("Content-Security-Policy", "default-src 'self'; img-src 'self' data: blob:; font-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'")
 		}
-		if s.cfg.CookieSecure {
+		if s.cookieSecure(r) {
 			h.Set("Strict-Transport-Security", "max-age=63072000; includeSubDomains")
 		}
 		next.ServeHTTP(w, r)

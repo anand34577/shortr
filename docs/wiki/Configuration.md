@@ -37,6 +37,30 @@ Run `shortr config check` at any time to validate and print the resolved
 | `SHORTR_SESSION_TTL` | `720h` (30 days) | Session cookie lifetime. |
 | `SHORTR_CORS_ORIGINS` | *(none)* | Comma-separated allowlist for cross-origin API access (e.g. a separately-hosted browser extension or SPA). Never a wildcard when credentials are involved. |
 
+If `SHORTR_REAL_IP_HEADER` is something other than `X-Forwarded-For` (say
+`CF-Connecting-IP`) and a trusted proxy sends a request without it, as VPN
+traffic to the console does, Shortr falls back to `X-Forwarded-For`.
+
+## Exposure (public vs. private listener)
+
+By default one listener serves everything. Set `SHORTR_ADMIN_LISTEN` to
+split it: `SHORTR_LISTEN` becomes the **public** listener (short-link
+redirects, link password pages, `/healthz`, `/readyz`, and a token-only
+API) and the admin listener serves the web console, sign-in, SSO, setup,
+the admin API and `/metrics`. On the public listener session cookies are
+ignored and hidden routes return the ordinary 404 page. See
+[deploy/NGINX_PROXY_MANAGER.md](../../deploy/NGINX_PROXY_MANAGER.md) section 6
+for a Cloudflare Tunnel + VPN walkthrough.
+
+| Variable | Default | Notes |
+|---|---|---|
+| `SHORTR_ADMIN_LISTEN` | *(none)* | e.g. `:8081`. Setting it turns on split mode. Must use a different port from `SHORTR_LISTEN`. |
+| `SHORTR_ADMIN_URL` | *(none)* | The URL you use to open the console, e.g. `https://shortr.home.lan`. Decides the console's cookie `Secure` flag and CSRF origin, and is where SSO returns. **Required** in split mode with OIDC. Without it, the console trusts the `Host` header for origin checks and sets `Secure` only on direct TLS. |
+| `SHORTR_PUBLIC_API` | `true` | Serve `/api/v1/*` and `/mcp` on the public listener (for mobile apps and scripts using API keys). `false` = redirects only. |
+| `SHORTR_PUBLIC_ADMIN_API` | `false` | Also serve the admin endpoints (`/api/v1/users`, `/settings`, `/audit`, `/admin/*`) on the public listener. They still need an `admin:*` key. |
+| `SHORTR_ROOT_REDIRECT` | *(none)* | Where a visit to the bare public domain (`/`) is sent, e.g. your homepage. Without it, `/` shows the 404 page on the public side (or goes to the console in single-port mode). |
+| `SHORTR_UI_ENABLED` | `true` | Single-port mode: `false` stops serving the console at all. |
+
 ## Links
 
 | Variable | Default | Notes |
@@ -77,6 +101,7 @@ Format is `<count>/<window>`, e.g. `200/10s`. `0` disables a limiter.
 |---|---|---|
 | `SHORTR_REGISTRATION` | `closed` | `closed` \| `open` \| `invite`. |
 | `SHORTR_ADMIN_EMAIL` / `SHORTR_ADMIN_PASSWORD` | *(none)* | If both are set and the users table is empty at startup, seeds an initial admin non-interactively (useful for automated deploys). |
+| `SHORTR_MFA_REQUIRED` | `false` | Password accounts must set up two-factor sign-in (an authenticator app) before they can use Shortr. SSO sign-ins are left to your identity provider. Can also be changed under **Admin → Settings**. |
 
 ### OIDC / SSO
 
@@ -96,19 +121,34 @@ Format is `<count>/<window>`, e.g. `200/10s`. `0` disables a limiter.
 | `SHORTR_OIDC_ALLOWED_DOMAINS` | *(none)* | Restrict SSO logins to these email domains. |
 | `SHORTR_OIDC_INSECURE_HTTP` | `false` | Allows a non-HTTPS issuer — local testing only. |
 | `SHORTR_OIDC_REQUIRED` | `false` | If discovery fails at startup, exit instead of retrying lazily. |
+| `SHORTR_OIDC_API_AUDIENCES` | *(none)* | Comma-separated client IDs. Access tokens from your provider whose `azp` or `aud` matches one of them are accepted as `Authorization: Bearer` on the API (e.g. a mobile app that signs in with Keycloak). The token's user must already have signed in to Shortr through SSO once; such tokens get `links:read`, `links:write` and `stats:read` only. |
 
 ## Notifications
 
 ### SMTP
 
-| Variable | Default |
-|---|---|
-| `SHORTR_SMTP_ENABLED` | `false` |
-| `SHORTR_SMTP_HOST` / `SHORTR_SMTP_PORT` | *(none)* / `587` |
-| `SHORTR_SMTP_USER` / `SHORTR_SMTP_PASS` | *(none)* |
-| `SHORTR_SMTP_FROM` | *(none, required if enabled)* |
-| `SHORTR_SMTP_USE_TLS` | `true` (STARTTLS) |
-| `SHORTR_SMTP_INSECURE` | `false` — skip TLS certificate verification, testing only |
+| Variable | Default | Notes |
+|---|---|---|
+| `SHORTR_SMTP_ENABLED` | `false` | |
+| `SHORTR_SMTP_HOST` | *(none)* | Required if enabled. |
+| `SHORTR_SMTP_TLS` | `starttls` | `starttls` (upgrade a plain connection; refuses to continue if the server doesn't offer it), `tls` (encrypted from the start, usually port 465) or `none` (no encryption, for a relay on your own network). |
+| `SHORTR_SMTP_PORT` | `587` / `465` / `25` | Follows `SHORTR_SMTP_TLS` unless set. |
+| `SHORTR_SMTP_USER` / `SHORTR_SMTP_PASS` | *(none)* | Leave empty for relays that don't need a login. With `SMTP_TLS=none` the password is sent in clear text, so only do that on a network you trust. |
+| `SHORTR_SMTP_FROM` | *(none)* | Required if enabled, e.g. `Shortr <noreply@example.com>`. |
+| `SHORTR_SMTP_INSECURE` | `false` | Accept an invalid or self-signed certificate with `starttls`/`tls`. |
+| `SHORTR_SMTP_USE_TLS` | | Older setting; `false` means `SMTP_TLS=none`. |
+
+Use **Admin → System → Send test email** to check the settings. The error
+from the mail server is shown as-is.
+
+Example for an unencrypted relay on your LAN:
+
+```bash
+SHORTR_SMTP_ENABLED=true
+SHORTR_SMTP_HOST=192.168.1.20
+SHORTR_SMTP_TLS=none            # port 25 unless SHORTR_SMTP_PORT is set
+SHORTR_SMTP_FROM=Shortr <shortr@home.lan>
+```
 
 ### Gotify
 

@@ -24,9 +24,13 @@ import {
   useUnlinkIdentity,
 } from "@/features/settings/api";
 import { oidcStartUrl } from "@/features/auth/api";
+import { TwoFactorCard } from "@/features/settings/two-factor-card";
+import { useSearchParams } from "react-router-dom";
 
 export default function SecurityPage() {
+  const [params] = useSearchParams();
   const me = useMe();
+  const enroll = params.get("enroll") === "1" || !!me.data?.mfaEnrollRequired;
   const status = useAuthStatus();
   const changePassword = useChangePassword();
   const sessions = useSessions();
@@ -84,6 +88,15 @@ export default function SecurityPage() {
       <div>
         <h1 className="text-xl font-semibold tracking-tight">Settings</h1>
         <SettingsNav />
+      </div>
+
+      {enroll && (
+        <p role="alert" className="max-w-lg rounded-lg border border-warning/40 bg-warning/10 px-4 py-3 text-sm">
+          Your administrator requires two-factor sign-in. Set it up below to keep using {status.data?.siteName || "Shortr"}.
+        </p>
+      )}
+      <div className="max-w-lg">
+        <TwoFactorCard highlight={enroll} />
       </div>
 
       <Card className="max-w-lg">

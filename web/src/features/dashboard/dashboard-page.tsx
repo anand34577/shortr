@@ -1,7 +1,6 @@
 import * as React from "react";
 import { Link as RouterLink, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { Area, AreaChart, ResponsiveContainer } from "recharts";
 import { ArrowRight, Copy, Link2, TrendingDown, TrendingUp, Users, MousePointerClick, Globe2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { LocalTime } from "@/components/local-time";
 import { EmptyState } from "@/components/empty-state";
+import { ClicksChart } from "@/components/clicks-chart";
 import { useCreateLink } from "@/features/links/api";
 import { useStatsOverview, useRecentActivity } from "@/features/dashboard/api";
 import { RangePicker, rangeToDates, type RangeKey } from "@/features/links/detail/range-picker";
@@ -145,20 +145,10 @@ export default function DashboardPage() {
               <p className="text-sm text-muted-foreground">Couldn’t load click analytics.</p>
               <Button variant="outline" size="sm" onClick={() => stats.refetch()}>Retry</Button>
             </div>
-          ) : !stats.data?.series.length ? (
-            <div className="flex h-64 items-center justify-center text-sm text-muted-foreground">No clicks yet — share a link to see activity here.</div>
+          ) : !stats.data?.totals.clicks ? (
+            <div className="flex h-64 items-center justify-center text-sm text-muted-foreground">No clicks in this range — share a link to see activity here.</div>
           ) : (
-            <ResponsiveContainer width="100%" height={260}>
-              <AreaChart data={stats.data.series} aria-label="Clicks over time">
-                <defs>
-                  <linearGradient id="dashClicks" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="var(--color-primary)" stopOpacity={0.35} />
-                    <stop offset="95%" stopColor="var(--color-primary)" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <Area type="monotone" dataKey="clicks" stroke="var(--color-primary)" fill="url(#dashClicks)" strokeWidth={2} />
-              </AreaChart>
-            </ResponsiveContainer>
+            <ClicksChart series={stats.data.series} />
           )}
         </CardContent>
       </Card>
@@ -183,14 +173,19 @@ export default function DashboardPage() {
             <EmptyState icon={MousePointerClick} title="No activity yet" description="Clicks on your links will show up here in real time." />
           ) : (
             <ul className="flex flex-col divide-y divide-border">
-              {recent.data.items.map((item) => (
+              {groupRecent(recent.data.items).map(({ item, count }) => (
                 <li key={item.id} className="flex items-center gap-3 py-2.5 text-sm">
                   <span aria-hidden="true">{countryFlag(item.country)}</span>
                   <RouterLink className="font-mono text-primary hover:underline" to={`/app/links/${item.linkId}`}>
                     {item.code}
                   </RouterLink>
-                  <span className="text-muted-foreground">from {item.referrerHost || "direct"}</span>
-                  <span className="ml-auto text-xs text-muted-foreground">
+                  <span className="truncate text-muted-foreground">from {item.referrerHost || "direct"}</span>
+                  {count > 1 && (
+                    <span className="rounded-full bg-muted px-1.5 text-xs tabular-nums text-muted-foreground" aria-label={`${count} clicks`}>
+                      ×{count}
+                    </span>
+                  )}
+                  <span className="ml-auto shrink-0 text-xs text-muted-foreground">
                     <LocalTime iso={item.ts} relative />
                   </span>
                 </li>
@@ -201,6 +196,23 @@ export default function DashboardPage() {
       </Card>
     </div>
   );
+}
+
+type RecentItem = NonNullable<ReturnType<typeof useRecentActivity>["data"]>["items"][number];
+
+/** Collapse back-to-back clicks on the same link from the same place into one
+ *  row with a count, so a burst doesn't bury everything else. */
+function groupRecent(items: RecentItem[]): { item: RecentItem; count: number }[] {
+  const out: { item: RecentItem; count: number }[] = [];
+  for (const item of items) {
+    const last = out[out.length - 1];
+    if (last && last.item.linkId === item.linkId && last.item.referrerHost === item.referrerHost && last.item.country === item.country) {
+      last.count++;
+    } else {
+      out.push({ item, count: 1 });
+    }
+  }
+  return out;
 }
 
 function StatTile({

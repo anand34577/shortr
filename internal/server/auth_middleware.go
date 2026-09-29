@@ -29,7 +29,9 @@ type identity struct {
 func (s *Server) resolveIdentity(r *http.Request) (*identity, error) {
 	ctx := r.Context()
 
-	if c, err := r.Cookie(sessionCookieName); err == nil && c.Value != "" {
+	// The public plane in split mode is token-only: a stolen or cross-site
+	// cookie is worthless there.
+	if c, err := r.Cookie(sessionCookieName); err == nil && c.Value != "" && planeOf(r) != planePublic {
 		hash := auth.HashToken(c.Value)
 		sess, err := s.store.GetSession(ctx, hash)
 		if err == nil {
@@ -63,16 +65,47 @@ func (s *Server) resolveIdentity(r *http.Request) (*identity, error) {
 					return &identity{User: u, APIKey: key}, nil
 				}
 			}
+		} else if s.oidc != nil && len(s.cfg.OIDCAPIAudiences) > 0 && strings.Count(raw, ".") == 2 {
+			return s.resolveOIDCBearer(r, raw), nil
 		}
 	}
 
 	return nil, nil
 }
 
+// oidcTokenScopes: what an IdP access token may do. Deliberately no admin:*
+// and, because it rides the APIKey slot, no session-only routes (keys,
+// password, sessions) — the same limits as a scoped API key.
+var oidcTokenScopes = []string{"links:read", "links:write", "stats:read"}
+
+// resolveOIDCBearer maps an IdP access token (e.g. from the Android app's
+// Keycloak login) to an existing local user through an already-linked SSO
+// identity. It never creates accounts: sign in to the web UI once first.
+func (s *Server) resolveOIDCBearer(r *http.Request, raw string) *identity {
+	sub, err := s.oidc.VerifyAccessToken(r.Context(), raw, s.cfg.OIDCAPIAudiences)
+	if err != nil {
+		s.log.Debug("oidc bearer rejected", "error", err)
+		return nil
+	}
+	oid, err := s.store.GetOIDCIdentity(r.Context(), s.cfg.OIDCIssuer, sub)
+	if err != nil {
+		return nil
+	}
+	u, err := s.store.GetUserByID(r.Context(), oid.UserID)
+	if err != nil || !u.IsActive() {
+		return nil
+	}
+	return &identity{User: u, APIKey: &store.APIKey{ID: "oidc:" + sub, UserID: u.ID, Name: "SSO access token", Scopes: oidcTokenScopes}}
+}
+
 // withIdentityMiddleware resolves identity once per request and stashes it
 // in context so downstream handlers/middleware don't repeat the DB lookup.
 func (s *Server) withIdentityMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !needsIdentity(r.URL.Path) {
+			next.ServeHTTP(w, r)
+			return
+		}
 		id, err := s.resolveIdentity(r)
 		if err == nil && id != nil {
 			ctx := context.WithValue(r.Context(), ctxKeyUser, id.User)
@@ -99,6 +132,10 @@ func (s *Server) requireAuth(h func(w http.ResponseWriter, r *http.Request, u *s
 		u := userFromContext(r.Context())
 		if u == nil {
 			respondError(w, r, ErrUnauthenticated)
+			return
+		}
+		if !mfaGateAllows(r) && s.mfaEnrollRequired(r, u) {
+			respondError(w, r, ErrMFAEnrollRequired)
 			return
 		}
 		h(w, r, u)
@@ -175,7 +212,7 @@ func (s *Server) csrfMiddleware(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r) // API-key or unauthenticated (handler enforces auth separately)
 			return
 		}
-		if origin := r.Header.Get("Origin"); origin != "" && !strings.EqualFold(origin, s.cfg.BaseURL) {
+		if origin := r.Header.Get("Origin"); origin != "" && !s.sameOrigin(r, origin) {
 			respondError(w, r, ErrCSRFFailed)
 			return
 		}

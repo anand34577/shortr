@@ -15,6 +15,7 @@ func (s *Server) routes() {
 	mux.HandleFunc("GET /metrics", s.handleMetrics)
 	mux.HandleFunc("GET /version", s.handleVersion)
 	mux.HandleFunc("GET /api/v1/openapi.json", s.handleOpenAPI)
+	mux.HandleFunc("GET /api/v1/client-config", s.handleClientConfig)
 	mux.HandleFunc("GET /robots.txt", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
 		_, _ = w.Write([]byte("User-agent: *\nDisallow: /\n"))
@@ -24,6 +25,7 @@ func (s *Server) routes() {
 	mux.HandleFunc("GET /auth/status", s.handleAuthStatus)
 	mux.Handle("POST /auth/setup", s.rateLimitMiddleware(s.rlAuth, "auth", ipKeyFn)(http.HandlerFunc(s.handleSetup)))
 	mux.Handle("POST /auth/login", s.rateLimitMiddleware(s.rlAuth, "auth", ipKeyFn)(http.HandlerFunc(s.handleLogin)))
+	mux.Handle("POST /auth/login/mfa", s.rateLimitMiddleware(s.rlAuth, "auth", ipKeyFn)(http.HandlerFunc(s.handleLoginMFA)))
 	mux.HandleFunc("POST /auth/logout", s.handleLogout)
 	mux.HandleFunc("POST /auth/sudo", s.requireAuth(s.handleSudo))
 	mux.Handle("POST /auth/register", s.rateLimitMiddleware(s.rlAuth, "auth", ipKeyFn)(http.HandlerFunc(s.handleRegister)))
@@ -39,6 +41,11 @@ func (s *Server) routes() {
 	mux.HandleFunc("DELETE /api/v1/me/sessions/{id}", s.requireSession(func(w http.ResponseWriter, r *http.Request, u *store.User) {
 		s.handleDeleteMySession(w, r, u, r.PathValue("id"))
 	}))
+	mux.HandleFunc("GET /api/v1/me/mfa", s.requireSession(s.handleGetMFA))
+	mux.HandleFunc("POST /api/v1/me/mfa/totp/setup", s.requireSession(s.handleMFASetup))
+	mux.HandleFunc("POST /api/v1/me/mfa/totp/enable", s.requireSession(s.handleMFAEnable))
+	mux.HandleFunc("POST /api/v1/me/mfa/recovery-codes", s.requireSession(s.handleMFARegenerateCodes))
+	mux.HandleFunc("DELETE /api/v1/me/mfa", s.requireSession(s.handleMFADisable))
 	mux.HandleFunc("GET /api/v1/me/identities", s.requireAuth(s.handleListMyIdentities))
 	mux.HandleFunc("DELETE /api/v1/me/identities/{id}", s.requireAuth(func(w http.ResponseWriter, r *http.Request, u *store.User) {
 		s.handleDeleteMyIdentity(w, r, u, r.PathValue("id"))
@@ -124,6 +131,9 @@ func (s *Server) routes() {
 	mux.HandleFunc("POST /api/v1/users/{id}/reset-password", s.requireAdmin(func(w http.ResponseWriter, r *http.Request, u *store.User) {
 		s.handleAdminResetPassword(w, r, u, r.PathValue("id"))
 	}))
+	mux.HandleFunc("DELETE /api/v1/users/{id}/mfa", s.requireAdmin(func(w http.ResponseWriter, r *http.Request, u *store.User) {
+		s.handleAdminResetMFA(w, r, u, r.PathValue("id"))
+	}))
 	mux.HandleFunc("DELETE /api/v1/users/{id}/sessions", s.requireAdmin(func(w http.ResponseWriter, r *http.Request, u *store.User) {
 		s.handleAdminDeleteUserSessions(w, r, u, r.PathValue("id"))
 	}))
@@ -139,15 +149,14 @@ func (s *Server) routes() {
 	}))
 	mux.HandleFunc("GET /api/v1/admin/system", s.requireAdmin(s.handleAdminSystem))
 	mux.HandleFunc("POST /api/v1/admin/backup", s.requireAdmin(s.handleAdminBackup))
+	mux.HandleFunc("POST /api/v1/admin/test-email", s.requireAdmin(s.handleAdminTestEmail))
 
 	// --- SPA (can be turned off for API/redirect-only deployments;
 	// see SHORTR_UI_ENABLED) -------------------------------------------
 	if s.cfg.UIEnabled {
 		mux.Handle("GET /app/", s.spaHandler())
-		mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
-			http.Redirect(w, r, "/app", http.StatusFound)
-		})
 	}
+	mux.HandleFunc("GET /{$}", s.handleRoot)
 
 	// --- redirect hot path (catch-all) --------------------------------
 	redirectChain := chain(http.HandlerFunc(s.handleRedirect), func(h http.Handler) http.Handler {
@@ -156,7 +165,7 @@ func (s *Server) routes() {
 	mux.Handle("/", redirectChain)
 
 	// full middleware stack, outermost first
-	s.handler = chain(mux,
+	base := chain(mux,
 		s.recoverMiddleware,
 		s.requestIDMiddleware,
 		s.realIPMiddleware,
@@ -167,4 +176,10 @@ func (s *Server) routes() {
 		s.apiRateLimitMiddleware,
 		s.csrfMiddleware,
 	)
+	if s.cfg.Split() {
+		s.handler = withPlane(planePublic, s.publicGate(base))
+		s.adminHandler = withPlane(planeAdmin, base)
+	} else {
+		s.handler = base
+	}
 }

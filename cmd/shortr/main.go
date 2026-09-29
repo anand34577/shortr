@@ -77,6 +77,7 @@ Usage:
   shortr migrate                 Apply pending database migrations and exit
   shortr admin create            Create an admin user
   shortr admin reset-password    Reset a user's password
+  shortr admin reset-mfa         Remove a user's two-factor sign-in (lost phone)
   shortr admin promote           Promote a user to admin
   shortr backup                  Write an on-demand SQLite backup
   shortr config check            Validate configuration and exit
@@ -154,7 +155,7 @@ func cmdServe() {
 	if cfg.SMTPEnabled {
 		smtpSender = notify.NewSMTPSender(notify.SMTPConfig{
 			Enabled: true, Host: cfg.SMTPHost, Port: cfg.SMTPPort, User: cfg.SMTPUser, Pass: cfg.SMTPPass,
-			From: cfg.SMTPFrom, UseTLS: cfg.SMTPUseTLS, Insecure: cfg.SMTPInsecure,
+			From: cfg.SMTPFrom, TLSMode: cfg.SMTPTLS, Insecure: cfg.SMTPInsecure,
 		})
 	} else {
 		smtpSender = notify.NewSMTPSender(notify.SMTPConfig{})

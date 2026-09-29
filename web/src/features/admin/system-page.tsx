@@ -1,15 +1,16 @@
 import type { ComponentType } from "react";
 import { toast } from "sonner";
-import { Database, HardDrive, RefreshCcw, Server, Zap, ShieldCheck, Mail, Bell, MapPin, Plug } from "lucide-react";
+import { Database, HardDrive, RefreshCcw, Server, Zap, ShieldCheck, Mail, Bell, MapPin, Plug, Globe, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { LocalTime } from "@/components/local-time";
 import { AdminNav } from "@/features/admin/admin-nav";
-import { useAdminSystem, useTriggerBackup } from "@/features/admin/api";
+import { useAdminSystem, useTriggerBackup, useSendTestEmail } from "@/features/admin/api";
 import { toastError } from "@/lib/apply-server-errors";
 import { LoadError } from "@/components/load-error";
+import type { Exposure } from "@/lib/types";
 
 function formatBytes(bytes: number) {
   if (!bytes) return "0 B";
@@ -28,6 +29,16 @@ function formatUptime(seconds: number) {
 export default function SystemPage() {
   const { data, isLoading, isError, refetch } = useAdminSystem();
   const backup = useTriggerBackup();
+  const testEmail = useSendTestEmail();
+
+  async function handleTestEmail() {
+    try {
+      const res = await testEmail.mutateAsync();
+      toast.success(`Test email sent to ${res.sentTo}`, { description: "Check your inbox (and spam folder)." });
+    } catch (err) {
+      toastError(err, "The mail server refused the test email");
+    }
+  }
 
   async function handleBackup() {
     try {
@@ -65,6 +76,8 @@ export default function SystemPage() {
             <MetricCard label="Detected proxy IP" value={data.detectedProxyIp || "—"} />
           </div>
 
+          {data.exposure && <ExposureCard x={data.exposure} />}
+
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Integrations</CardTitle>
@@ -77,6 +90,13 @@ export default function SystemPage() {
               <IntegrationBadge icon={MapPin} label="IP location checker" enabled={data.ipLocationEnabled} />
               <IntegrationBadge icon={Plug} label="MCP server" enabled={data.mcpEnabled} />
             </CardContent>
+            {data.smtpEnabled && (
+              <CardContent className="pt-0">
+                <Button variant="outline" size="sm" className="gap-1.5" onClick={handleTestEmail} disabled={testEmail.isPending}>
+                  <Mail className="size-4" /> {testEmail.isPending ? "Sending…" : "Send test email"}
+                </Button>
+              </CardContent>
+            )}
           </Card>
 
           <Card className="max-w-xl">
@@ -121,6 +141,60 @@ function MetricCard({ icon: Icon, label, value }: { icon?: ComponentType<{ class
           {label}
         </div>
         <p className="mt-1 truncate text-lg font-semibold">{value}</p>
+      </CardContent>
+    </Card>
+  );
+}
+
+/** What the internet can reach versus what stays on the private network. */
+function ExposureCard({ x }: { x: Exposure }) {
+  const publicServes = [
+    "Short-link redirects",
+    x.publicApi && (x.publicAdminApi ? "Full API (incl. admin)" : "Links & stats API"),
+    x.publicApi && "API keys" + (x.oidcApiTokens ? " + SSO tokens" : ""),
+    !x.split && "Web console & sign-in",
+  ].filter(Boolean) as string[];
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Exposure</CardTitle>
+        <CardDescription>
+          {x.split
+            ? "Split mode: the console runs on its own listener. Only the public listener should be reachable from the internet."
+            : "Single-port mode: redirects, API and console share one listener. Set SHORTR_ADMIN_LISTEN to keep the console private."}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="grid gap-3 sm:grid-cols-2">
+        <div className="rounded-lg border border-border p-3">
+          <div className="flex items-center gap-2 text-sm font-medium">
+            <Globe className="size-4 text-primary" /> Public
+            <code className="ml-auto text-xs text-muted-foreground">{x.publicListen}</code>
+          </div>
+          <p className="mt-1 truncate text-xs text-muted-foreground">{x.baseUrl}</p>
+          <div className="mt-2 flex flex-wrap gap-1">
+            {publicServes.map((s) => (
+              <Badge key={s} variant="secondary" className="text-[10px]">{s}</Badge>
+            ))}
+          </div>
+        </div>
+        <div className="rounded-lg border border-border p-3">
+          <div className="flex items-center gap-2 text-sm font-medium">
+            <Lock className={x.split ? "size-4 text-success" : "size-4 text-muted-foreground"} /> Private console
+            {x.split && <code className="ml-auto text-xs text-muted-foreground">{x.adminListen}</code>}
+          </div>
+          {x.split ? (
+            <>
+              <p className="mt-1 truncate text-xs text-muted-foreground">{x.adminUrl || "Reached by LAN / VPN address"}</p>
+              <div className="mt-2 flex flex-wrap gap-1">
+                {["Web console", "Sign-in & SSO", "Admin API", "Metrics"].map((s) => (
+                  <Badge key={s} variant="success" className="text-[10px]">{s}</Badge>
+                ))}
+              </div>
+            </>
+          ) : (
+            <p className="mt-1 text-xs text-muted-foreground">Not separated — the console is served on the public listener.</p>
+          )}
+        </div>
       </CardContent>
     </Card>
   );

@@ -123,7 +123,10 @@ export default function AdminUsersPage() {
                     <Badge variant={u.role === "admin" ? "default" : "outline"}>{u.role}</Badge>
                   </TableCell>
                   <TableCell>
-                    <Badge variant={u.status === "active" ? "success" : "destructive"}>{u.status}</Badge>
+                    <div className="flex gap-1">
+                      <Badge variant={u.status === "active" ? "success" : "destructive"}>{u.status}</Badge>
+                      {u.mfaEnabled && <Badge variant="secondary" title="Two-factor sign-in is on">2FA</Badge>}
+                    </div>
                   </TableCell>
                   <TableCell>{u.linksCount ?? "—"}</TableCell>
                   <TableCell className="text-sm text-muted-foreground">

@@ -43,6 +43,7 @@ type Session struct {
 	CreatedAt  time.Time
 	ExpiresAt  time.Time
 	LastSeenAt time.Time
+	AuthMethod string // password | oidc
 }
 
 type APIKey struct {

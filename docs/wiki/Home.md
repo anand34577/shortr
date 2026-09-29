@@ -17,6 +17,8 @@ This wiki covers running and integrating Shortr. For a quick start, see the
   variable, grouped by concern, with defaults and validation rules.
 - **[API Reference](API-Reference.md)** — REST endpoint map, auth model
   (session cookies vs. scoped API keys), pagination, and error envelope.
+- **[Android App](Android-App.md)**: install the app, pair it with a QR
+  code or sign in with Keycloak.
 - **[MCP Server](MCP-Server.md)** — using Shortr from an AI agent over the
   Model Context Protocol.
 - **[Deployment](Deployment.md)** — reverse proxies, TLS termination,

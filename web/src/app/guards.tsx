@@ -26,6 +26,10 @@ export function RequireAuth() {
     return <Navigate to={`/app/login?next=${next}`} replace />;
   }
 
+  if (me.data.mfaEnrollRequired && location.pathname !== "/app/settings/security") {
+    return <Navigate to="/app/settings/security?enroll=1" replace />;
+  }
+
   return <Outlet />;
 }
 

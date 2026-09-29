@@ -31,7 +31,10 @@ func (s *Server) toMeDTO(r *http.Request, u *store.User) meDTO {
 	if sess := sessionFromContext(r.Context()); sess != nil {
 		csrf = sess.CSRFToken
 	}
-	return meDTO{userDTO: toUserDTO(u), CSRFToken: csrf, Capabilities: caps}
+	enabled := s.userMFA(r.Context(), u.ID).Enabled()
+	d := meDTO{userDTO: toUserDTO(u), CSRFToken: csrf, Capabilities: caps, MFAEnrollRequired: s.mfaEnrollRequired(r, u)}
+	d.MFAEnabled = &enabled
+	return d
 }
 
 type patchMeReq struct {
@@ -70,6 +73,7 @@ func (s *Server) handlePatchMe(w http.ResponseWriter, r *http.Request, u *store.
 				if _, err := s.store.GetUserByEmail(r.Context(), email); err == nil {
 					verrs.Add("email", "this email is already in use")
 				} else {
+					s.audit(r, u.ID, "user.email_changed", "user", u.ID, map[string]any{"from": u.Email, "to": email})
 					u.Email = email
 					u.EmailVerified = false
 				}
@@ -220,17 +224,28 @@ func (s *Server) handleDeleteMe(w http.ResponseWriter, r *http.Request, u *store
 	}
 	linksMode := r.URL.Query().Get("links")
 	if linksMode == "delete" {
-		links, _, err := s.store.ListLinks(r.Context(), store.LinkFilter{UserID: u.ID, Limit: 100})
-		if err == nil {
+		// page through every link, not just the first page
+		cursor := ""
+		for {
+			links, next, err := s.store.ListLinks(r.Context(), store.LinkFilter{UserID: u.ID, Limit: 100, Cursor: cursor})
+			if err != nil {
+				respondError(w, r, err)
+				return
+			}
 			for _, l := range links {
 				_ = s.links.Delete(r.Context(), l.ID, l.Code)
 			}
+			if next == "" {
+				break
+			}
+			cursor = next
 		}
 	}
 	if err := s.store.DeleteUser(r.Context(), u.ID); err != nil {
 		respondError(w, r, err)
 		return
 	}
-	http.SetCookie(w, &http.Cookie{Name: sessionCookieName, Value: "", Path: "/", MaxAge: -1, HttpOnly: true, Secure: s.cfg.CookieSecure, SameSite: http.SameSiteLaxMode})
+	s.audit(r, u.ID, "user.delete", "user", u.ID, map[string]any{"email": u.Email, "links": linksMode})
+	http.SetCookie(w, &http.Cookie{Name: sessionCookieName, Value: "", Path: "/", MaxAge: -1, HttpOnly: true, Secure: s.cookieSecure(r), SameSite: http.SameSiteLaxMode})
 	w.WriteHeader(http.StatusNoContent)
 }

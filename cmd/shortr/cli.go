@@ -35,13 +35,13 @@ func cmdMigrate(args []string) {
 
 func cmdAdmin(args []string) {
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "usage: shortr admin <create|reset-password|promote> [flags]")
+		fmt.Fprintln(os.Stderr, "usage: shortr admin <create|reset-password|reset-mfa|promote> [flags]")
 		os.Exit(2)
 	}
 	sub := args[0]
 	rest := args[1:]
 	cfg := loadCfgOrExit()
-	st, err := store.Open(cfg.DBDriver, cfg.DBDSN, cfg.DataDir, cfg.DBMaxConns)
+	st, err := store.OpenShared(cfg.DBDriver, cfg.DBDSN, cfg.DataDir, cfg.DBMaxConns)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "database error:", err)
 		os.Exit(1)
@@ -118,6 +118,27 @@ func cmdAdmin(args []string) {
 			fmt.Println("generated password:", pw)
 		}
 
+	case "reset-mfa":
+		fs := flag.NewFlagSet("admin reset-mfa", flag.ExitOnError)
+		email := fs.String("email", "", "user email (required)")
+		fs.Parse(rest) //nolint:errcheck
+		if *email == "" {
+			fmt.Fprintln(os.Stderr, "--email is required")
+			os.Exit(2)
+		}
+		u, err := st.GetUserByEmail(ctx, *email)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "user not found:", *email)
+			os.Exit(1)
+		}
+		if err := st.DeleteUserMFA(ctx, u.ID); err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			os.Exit(1)
+		}
+		_ = st.DeleteSessionsForUser(ctx, u.ID)
+		_ = st.AddAudit(ctx, &store.AuditEntry{Action: "user.cli_reset_mfa", TargetType: "user", TargetID: u.ID, Meta: `{"via":"cli"}`})
+		fmt.Println("two-factor sign-in removed for", *email, "- they can sign in with their password and set it up again")
+
 	case "promote":
 		fs := flag.NewFlagSet("admin promote", flag.ExitOnError)
 		email := fs.String("email", "", "user email (required)")
@@ -155,7 +176,7 @@ func cmdBackup(args []string) {
 		fmt.Fprintln(os.Stderr, "backup command only supports the sqlite driver; use pg_dump for postgres")
 		os.Exit(2)
 	}
-	st, err := store.Open(cfg.DBDriver, cfg.DBDSN, cfg.DataDir, cfg.DBMaxConns)
+	st, err := store.OpenShared(cfg.DBDriver, cfg.DBDSN, cfg.DataDir, cfg.DBMaxConns)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "database error:", err)
 		os.Exit(1)

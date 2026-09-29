@@ -21,6 +21,7 @@ type authStatusResp struct {
 	LocalLogin      bool   `json:"localLogin"`
 	Registration    string `json:"registration"`
 	SiteName        string `json:"siteName"`
+	BaseURL         string `json:"baseUrl"` // public short-link origin; the console may run elsewhere
 }
 
 func (s *Server) handleAuthStatus(w http.ResponseWriter, r *http.Request) {
@@ -31,7 +32,7 @@ func (s *Server) handleAuthStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	resp := authStatusResp{
 		SetupRequired: n == 0, OIDCEnabled: s.cfg.OIDCEnabled, OIDCDisplayName: s.cfg.OIDCDisplayName,
-		LocalLogin: s.cfg.OIDCLocalLogin || !s.cfg.OIDCEnabled, Registration: s.cfg.Registration, SiteName: s.siteNameOrDefault(r.Context()),
+		LocalLogin: s.cfg.OIDCLocalLogin || !s.cfg.OIDCEnabled, Registration: s.live().Registration, SiteName: s.siteNameOrDefault(r.Context()), BaseURL: s.cfg.BaseURL,
 	}
 	if s.oidc != nil {
 		resp.OIDCReady = s.oidc.Ready(r.Context())
@@ -118,11 +119,11 @@ func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	s.audit(r, u.ID, "user.setup", "user", u.ID, nil)
-	sess, ok := s.startSession(w, r, u)
+	sess, ok := s.startSession(w, r, u, "password")
 	if !ok {
 		return
 	}
-	respondJSON(w, http.StatusCreated, s.meDTOWithSession(u, sess))
+	respondJSON(w, http.StatusCreated, s.meDTOWithSession(r, u, sess))
 }
 
 type loginReq struct {
@@ -143,29 +144,31 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	// is already applied by the route middleware.
 	lockKey := "login-fail:" + strings.ToLower(strings.TrimSpace(req.Email)) + "|" + ipKeyFn(r)
 	if !s.rlAuth.Peek(lockKey) {
+		s.audit(r, "", "user.login_locked", "user", "", map[string]any{"email": truncateStr(req.Email, 254)})
 		respondError(w, r, ErrLockedOut)
 		return
 	}
-	badLogin := func() {
+	badLogin := func(userID string) {
 		s.rlAuth.Allow(lockKey)
+		s.audit(r, userID, "user.login_failed", "user", userID, map[string]any{"email": truncateStr(req.Email, 254)})
 		respondError(w, r, NewAPIError(http.StatusUnauthorized, "UNAUTHENTICATED", "invalid email or password"))
 	}
 
 	email, err := validate.Email(req.Email)
 	if err != nil {
 		auth.VerifyAgainstDummy(req.Password)
-		badLogin()
+		badLogin("")
 		return
 	}
 	u, err := s.store.GetUserByEmail(r.Context(), email)
 	if err != nil || u.PasswordHash == nil {
 		auth.VerifyAgainstDummy(req.Password)
-		badLogin()
+		badLogin("")
 		return
 	}
 	ok, needsRehash, err := auth.VerifyPassword(req.Password, *u.PasswordHash)
 	if err != nil || !ok {
-		badLogin()
+		badLogin(u.ID)
 		return
 	}
 	s.rlAuth.Reset(lockKey)
@@ -179,23 +182,32 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 			_ = s.store.UpdateUser(r.Context(), u)
 		}
 	}
+	if s.userMFA(r.Context(), u.ID).Enabled() {
+		// password was right; the session waits for the second factor
+		respondJSON(w, http.StatusOK, map[string]any{
+			"mfaRequired": true,
+			"mfaToken":    auth.SealValue(s.cfg.SecretKey, mfaTokenPrefix+u.ID, mfaTokenTTL),
+		})
+		return
+	}
 	now := time.Now()
 	u.LastLoginAt = &now
 	_ = s.store.UpdateUser(r.Context(), u)
 
 	s.audit(r, u.ID, "user.login", "user", u.ID, nil)
-	sess, ok := s.startSession(w, r, u)
+	sess, ok := s.startSession(w, r, u, "password")
 	if !ok {
 		return
 	}
-	respondJSON(w, http.StatusOK, s.meDTOWithSession(u, sess))
+	respondJSON(w, http.StatusOK, s.meDTOWithSession(r, u, sess))
 }
 
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	if sess := sessionFromContext(r.Context()); sess != nil {
 		_ = s.store.DeleteSession(r.Context(), sess.ID)
+		s.audit(r, sess.UserID, "user.logout", "user", sess.UserID, nil)
 	}
-	http.SetCookie(w, &http.Cookie{Name: sessionCookieName, Value: "", Path: "/", MaxAge: -1, HttpOnly: true, Secure: s.cfg.CookieSecure, SameSite: http.SameSiteLaxMode})
+	http.SetCookie(w, &http.Cookie{Name: sessionCookieName, Value: "", Path: "/", MaxAge: -1, HttpOnly: true, Secure: s.cookieSecure(r), SameSite: http.SameSiteLaxMode})
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -206,7 +218,7 @@ type registerReq struct {
 }
 
 func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
-	if s.cfg.Registration != "open" {
+	if s.live().Registration != "open" {
 		respondError(w, r, ErrForbidden)
 		return
 	}
@@ -246,11 +258,11 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 	if s.notifier != nil {
 		s.notifier.NotifyAdmins(r.Context(), notify.KindUserRegistered, "New user registered", u.Email+" just created an account.", map[string]any{"user_id": u.ID})
 	}
-	sess, ok := s.startSession(w, r, u)
+	sess, ok := s.startSession(w, r, u, "password")
 	if !ok {
 		return
 	}
-	respondJSON(w, http.StatusCreated, s.meDTOWithSession(u, sess))
+	respondJSON(w, http.StatusCreated, s.meDTOWithSession(r, u, sess))
 }
 
 // --- session helpers -----------------------------------------------------
@@ -262,7 +274,7 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 // handler, when the request carried no session cookie), so callers must use
 // the returned session rather than the request context. Returns ok=false
 // if it already wrote an error response.
-func (s *Server) startSession(w http.ResponseWriter, r *http.Request, u *store.User) (sess *store.Session, ok bool) {
+func (s *Server) startSession(w http.ResponseWriter, r *http.Request, u *store.User, method string) (sess *store.Session, ok bool) {
 	raw, hash, err := auth.NewOpaqueToken(32)
 	if err != nil {
 		respondError(w, r, err)
@@ -272,14 +284,14 @@ func (s *Server) startSession(w http.ResponseWriter, r *http.Request, u *store.U
 	ip := clientIPFromContext(r.Context())
 	sess = &store.Session{
 		ID: hash, UserID: u.ID, CSRFToken: csrfRaw, IP: ipStrOrEmpty(ip), UserAgent: truncateStr(r.UserAgent(), 300),
-		ExpiresAt: time.Now().Add(s.cfg.SessionTTL),
+		ExpiresAt: time.Now().Add(s.cfg.SessionTTL), AuthMethod: method,
 	}
 	if err := s.store.CreateSession(r.Context(), sess); err != nil {
 		respondError(w, r, err)
 		return nil, false
 	}
 	http.SetCookie(w, &http.Cookie{
-		Name: sessionCookieName, Value: raw, Path: "/", HttpOnly: true, Secure: s.cfg.CookieSecure,
+		Name: sessionCookieName, Value: raw, Path: "/", HttpOnly: true, Secure: s.cookieSecure(r),
 		SameSite: http.SameSiteLaxMode, Expires: sess.ExpiresAt,
 	})
 	return sess, true
@@ -288,12 +300,30 @@ func (s *Server) startSession(w http.ResponseWriter, r *http.Request, u *store.U
 // meDTOWithSession builds a meDTO using an explicit session (see
 // startSession's doc comment for why this can't just call s.toMeDTO, which
 // reads the session from context).
-func (s *Server) meDTOWithSession(u *store.User, sess *store.Session) meDTO {
+func (s *Server) meDTOWithSession(r *http.Request, u *store.User, sess *store.Session) meDTO {
 	caps := []string{"links:read", "links:write", "stats:read"}
 	if u.IsAdmin() {
 		caps = append(caps, "admin")
 	}
-	return meDTO{userDTO: toUserDTO(u), CSRFToken: sess.CSRFToken, Capabilities: caps}
+	enabled := s.userMFA(r.Context(), u.ID).Enabled()
+	d := meDTO{userDTO: toUserDTO(u), CSRFToken: sess.CSRFToken, Capabilities: caps}
+	d.MFAEnabled = &enabled
+	d.MFAEnrollRequired = s.live().MFARequired && u.PasswordHash != nil && sess.AuthMethod != "oidc" && !enabled
+	return d
+}
+
+// authMethod names how the caller authenticated, for the audit trail.
+func authMethod(r *http.Request) string {
+	if k := apiKeyFromContext(r.Context()); k != nil {
+		if strings.HasPrefix(k.ID, "oidc:") {
+			return "oidc_token"
+		}
+		return "api_key"
+	}
+	if sessionFromContext(r.Context()) != nil {
+		return "session"
+	}
+	return ""
 }
 
 func truncateStr(s string, n int) string {
@@ -312,6 +342,19 @@ func (s *Server) audit(r *http.Request, actorUserID, action, targetType, targetI
 		}
 	}
 	entry := &store.AuditEntry{ActorUserID: actorUserID, ActorIP: ipStrOrEmpty(ip), Action: action, TargetType: targetType, TargetID: targetID, Meta: metaJSON}
+	if via := authMethod(r); via != "" || r.UserAgent() != "" {
+		m := map[string]any{}
+		_ = json.Unmarshal([]byte(metaJSON), &m)
+		if via != "" {
+			m["via"] = via
+		}
+		if ua := r.UserAgent(); ua != "" {
+			m["ua"] = truncateStr(ua, 200)
+		}
+		if b, err := json.Marshal(m); err == nil {
+			entry.Meta = string(b)
+		}
+	}
 	if err := s.store.AddAudit(context.Background(), entry); err != nil {
 		s.log.Warn("audit log write failed", "error", err)
 	}

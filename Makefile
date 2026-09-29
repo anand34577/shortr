@@ -2,7 +2,7 @@ VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo none)
 LDFLAGS := -s -w -X main.version=$(VERSION) -X main.commit=$(COMMIT)
 
-.PHONY: web build run test lint vet clean docker release
+.PHONY: web build run test lint vet clean docker release android
 
 web:
 	cd web && npm ci && npm run build
@@ -23,7 +23,11 @@ lint: vet
 	@command -v staticcheck >/dev/null 2>&1 && staticcheck ./... || echo "staticcheck not installed, skipping"
 
 clean:
-	rm -rf bin web/dist
+	rm -rf bin web/dist android/app/build
+
+# Android app (needs JDK 17+ and the Android SDK; see android/README.md)
+android:
+	cd android && ./gradlew assembleDebug
 
 docker:
 	docker build -t shortr:$(VERSION) --build-arg VERSION=$(VERSION) --build-arg COMMIT=$(COMMIT) .

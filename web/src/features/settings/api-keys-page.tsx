@@ -2,6 +2,7 @@ import * as React from "react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
+import { QRCodeSVG } from "qrcode.react";
 import { AlertTriangle, Copy, KeyRound, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,13 +22,20 @@ import { confirm } from "@/components/confirm-dialog";
 import { useApiKeys, useCreateApiKey, useRevokeApiKey } from "@/features/settings/api";
 import type { ApiKeyCreated } from "@/lib/types";
 import { copyText } from "@/lib/clipboard";
+import { usePublicOrigin } from "@/hooks/use-auth-status";
 
 export default function ApiKeysPage() {
   const { data, isLoading } = useApiKeys();
   const create = useCreateApiKey();
   const revoke = useRevokeApiKey();
-  const [dialogOpen, setDialogOpen] = React.useState(false);
   const [created, setCreated] = React.useState<ApiKeyCreated | null>(null);
+  // Pairing link for mobile apps: they register the shortr:// scheme and
+  // read the public server URL plus key from it (documented in API-Reference).
+  const serverUrl = usePublicOrigin();
+  const pairUri = created
+    ? `shortr://connect?server=${encodeURIComponent(serverUrl)}&key=${encodeURIComponent(created.key)}`
+    : "";
+  const [dialogOpen, setDialogOpen] = React.useState(false);
 
   const {
     register,
@@ -186,6 +194,20 @@ export default function ApiKeysPage() {
               <AlertTriangle className="size-4" /> This is shown only once. Copy it now.
             </DialogDescription>
           </DialogHeader>
+          {created && (
+            <div className="flex flex-col items-center gap-2 rounded-lg border border-border p-4 sm:flex-row sm:items-start sm:gap-4">
+              <div className="rounded-md bg-white p-2">
+                <QRCodeSVG value={pairUri} size={132} level="M" aria-label="Pairing QR code for a mobile app" />
+              </div>
+              <div className="text-sm">
+                <p className="font-medium">Pair a phone</p>
+                <p className="mt-1 text-muted-foreground">
+                  Scan this with the mobile app to connect it to <span className="break-all font-mono text-xs">{serverUrl}</span> using
+                  this key. Treat the code like a password.
+                </p>
+              </div>
+            </div>
+          )}
           {created && (
             <div className="flex items-center gap-2 rounded-lg border border-border bg-muted px-3 py-2">
               <code className="flex-1 overflow-x-auto text-sm">{created.key}</code>

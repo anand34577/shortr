@@ -1,7 +1,7 @@
 import * as React from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { ArrowLeft, KeyRound, LogOut, Trash2 } from "lucide-react";
+import { ArrowLeft, KeyRound, LogOut, ShieldOff, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -18,6 +18,7 @@ import {
   useDeleteUser,
   useResetUserPassword,
   useRevokeUserSessions,
+  useResetUserMfa,
 } from "@/features/admin/api";
 
 export default function UserDetailPage() {
@@ -29,6 +30,7 @@ export default function UserDetailPage() {
   const del = useDeleteUser();
   const resetPassword = useResetUserPassword();
   const revokeSessions = useRevokeUserSessions();
+  const resetMfa = useResetUserMfa();
 
   if (isLoading) {
     return (
@@ -80,6 +82,22 @@ export default function UserDetailPage() {
     }
   }
 
+  async function handleResetMfa() {
+    const confirmed = await confirmDialog({
+      title: "Remove two-factor sign-in?",
+      description: `Use this when ${user!.email} lost their phone and recovery codes. They'll be signed out and can sign in with just their password, then set it up again.`,
+      confirmLabel: "Remove two-factor",
+      variant: "destructive",
+    });
+    if (!confirmed) return;
+    try {
+      await resetMfa.mutateAsync(user!.id);
+      toast.success("Two-factor sign-in removed");
+    } catch (err) {
+      toastError(err, "Couldn't remove two-factor sign-in");
+    }
+  }
+
   async function handleRevokeSessions() {
     try {
       await revokeSessions.mutateAsync(user!.id);
@@ -120,12 +138,18 @@ export default function UserDetailPage() {
           <div className="mt-2 flex gap-1.5">
             <Badge variant={user.role === "admin" ? "default" : "outline"}>{user.role}</Badge>
             <Badge variant={user.status === "active" ? "success" : "destructive"}>{user.status}</Badge>
+            {user.mfaEnabled && <Badge variant="secondary">2FA</Badge>}
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" size="sm" className="gap-1.5" onClick={handleReset} disabled={resetPassword.isPending}>
             <KeyRound className="size-3.5" /> Reset password
           </Button>
+          {user.mfaEnabled && (
+            <Button variant="outline" size="sm" className="gap-1.5" onClick={handleResetMfa} disabled={resetMfa.isPending}>
+              <ShieldOff className="size-3.5" /> Remove 2FA
+            </Button>
+          )}
           <Button variant="outline" size="sm" className="gap-1.5" onClick={handleRevokeSessions} disabled={revokeSessions.isPending}>
             <LogOut className="size-3.5" /> Revoke sessions
           </Button>

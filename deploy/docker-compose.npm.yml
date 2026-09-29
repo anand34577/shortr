@@ -8,7 +8,7 @@
 #
 #   docker network create npm-proxy   # once, if it doesn't already exist
 #   cp .env.example .env              # set SHORTR_BASE_URL, SHORTR_SECRET_KEY
-#   docker compose -f deploy/docker-compose.npm.yml up -d
+#   docker compose --env-file .env -f deploy/docker-compose.npm.yml up -d
 #
 # Shortr is NOT published on a host port here — only reachable via NPM on
 # the shared network, which is the point. Local development is unaffected:
@@ -34,6 +34,11 @@ services:
       context: ..
     container_name: shortr
     restart: unless-stopped
+    # Every SHORTR_* setting in .env reaches the container (SMTP, OIDC, MFA…);
+    # the environment: block below only supplies defaults and wiring.
+    env_file:
+      - path: ../.env
+        required: false
     environment:
       SHORTR_BASE_URL: ${SHORTR_BASE_URL:?e.g. https://sho.rt}
       SHORTR_SECRET_KEY: ${SHORTR_SECRET_KEY:?set SHORTR_SECRET_KEY}
@@ -45,6 +50,17 @@ services:
       # orange-clouded DNS) — see deploy/NGINX_PROXY_MANAGER.md section 6.
       SHORTR_REAL_IP_HEADER: ${SHORTR_REAL_IP_HEADER:-X-Forwarded-For}
       SHORTR_REGISTRATION: ${SHORTR_REGISTRATION:-closed}
+      # Split exposure (NGINX_PROXY_MANAGER.md section 6): the tunnel/public
+      # proxy host goes to shortr:8080 (redirects + token API), the VPN-only
+      # proxy host to shortr:8081 (console). Set it empty for one port.
+      SHORTR_ADMIN_LISTEN: ${SHORTR_ADMIN_LISTEN-:8081}
+      SHORTR_ADMIN_URL: ${SHORTR_ADMIN_URL:-}
+      SHORTR_ROOT_REDIRECT: ${SHORTR_ROOT_REDIRECT:-}
+      SHORTR_OIDC_ENABLED: ${SHORTR_OIDC_ENABLED:-false}
+      SHORTR_OIDC_ISSUER: ${SHORTR_OIDC_ISSUER:-}
+      SHORTR_OIDC_CLIENT_ID: ${SHORTR_OIDC_CLIENT_ID:-}
+      SHORTR_OIDC_CLIENT_SECRET: ${SHORTR_OIDC_CLIENT_SECRET:-}
+      SHORTR_OIDC_API_AUDIENCES: ${SHORTR_OIDC_API_AUDIENCES:-}
     volumes:
       - shortr-data:/data
     networks: [npm-proxy]

@@ -1,6 +1,6 @@
 # PostgreSQL-backed deployment.
 #
-#   docker compose -f deploy/docker-compose.postgres.yml up -d
+#   docker compose --env-file .env -f deploy/docker-compose.postgres.yml up -d   (from the repo root)
 #
 services:
   postgres:
@@ -27,6 +27,11 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    # Every SHORTR_* setting in .env reaches the container (SMTP, OIDC, MFA…);
+    # the environment: block below only supplies defaults and wiring.
+    env_file:
+      - path: ../.env
+        required: false
     environment:
       SHORTR_BASE_URL: ${SHORTR_BASE_URL:-http://localhost:8080}
       SHORTR_SECRET_KEY: ${SHORTR_SECRET_KEY:?set SHORTR_SECRET_KEY}

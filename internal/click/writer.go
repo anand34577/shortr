@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"sync/atomic"
 	"time"
 
 	"shortr/internal/store"
@@ -46,8 +47,9 @@ type Writer struct {
 	metrics Metrics
 	log     *slog.Logger
 
-	ch   chan Event
-	done chan struct{}
+	ch        chan Event
+	done      chan struct{}
+	countBots atomic.Bool
 }
 
 func NewWriter(st *store.Store, geo *GeoDB, cfg WriterConfig, m Metrics, log *slog.Logger) *Writer {
@@ -58,12 +60,17 @@ func NewWriter(st *store.Store, geo *GeoDB, cfg WriterConfig, m Metrics, log *sl
 	if log == nil {
 		log = slog.Default()
 	}
-	return &Writer{
+	w := &Writer{
 		cfg: cfg, store: st, geo: geo, metrics: m, log: log,
 		ch:   make(chan Event, cfg.QueueSize),
 		done: make(chan struct{}),
 	}
+	w.countBots.Store(cfg.CountBots)
+	return w
 }
+
+// SetCountBots applies the admin "count bots" setting to future batches.
+func (w *Writer) SetCountBots(b bool) { w.countBots.Store(b) }
 
 // Enqueue never blocks. Returns false (and the caller/metrics should count a
 // drop) if the queue is full.
@@ -198,7 +205,7 @@ func (w *Writer) flush(ctx context.Context, batch []*store.Click) {
 		if attempt > 0 {
 			time.Sleep(backoff)
 		}
-		err = w.store.InsertClicksBatch(ctx, batch, w.cfg.CountBots)
+		err = w.store.InsertClicksBatch(ctx, batch, w.countBots.Load())
 		if err == nil {
 			w.metrics.IncClicksWritten(int64(len(batch)))
 			return
@@ -281,7 +288,7 @@ func (w *Writer) replayFile(ctx context.Context, path string) bool {
 	}
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	if err := w.store.InsertClicksBatch(ctx, batch, w.cfg.CountBots); err != nil {
+	if err := w.store.InsertClicksBatch(ctx, batch, w.countBots.Load()); err != nil {
 		w.log.Warn("spool replay failed, will retry next start", "file", path, "error", err)
 		return false
 	}
