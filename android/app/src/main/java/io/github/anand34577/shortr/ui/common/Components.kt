@@ -151,7 +151,7 @@ fun LinkStatusPill(link: Link) {
 
 /** Ranked list with proportional bars (countries, referrers, devices…). */
 @Composable
-fun BreakdownList(rows: List<BreakdownRow>, emptyText: String, leading: ((BreakdownRow) -> String)? = null) {
+fun BreakdownList(rows: List<BreakdownRow>, emptyText: String, leadingIcon: ImageVector? = null) {
     if (rows.isEmpty()) {
         Text(emptyText, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 8.dp))
         return
@@ -164,7 +164,10 @@ fun BreakdownList(rows: List<BreakdownRow>, emptyText: String, leading: ((Breakd
             val frac by animateFloatAsState(if (started) row.clicks.toFloat() / max else 0f, tween(600), label = "bar")
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (leading != null) Text(leading(row), modifier = Modifier.width(28.dp))
+                    if (leadingIcon != null) {
+                        Icon(leadingIcon, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Spacer(Modifier.width(10.dp))
+                    }
                     Text(row.key.ifBlank { "Unknown" }, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                     Text(compact(row.clicks), style = MaterialTheme.typography.labelLarge)
                 }

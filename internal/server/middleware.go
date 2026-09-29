@@ -113,18 +113,6 @@ func ipInAny(ip net.IP, nets []*net.IPNet) bool {
 	return false
 }
 
-func clientScheme(r *http.Request, trusted []*net.IPNet, remoteTrusted bool) string {
-	if remoteTrusted {
-		if v := r.Header.Get("X-Forwarded-Proto"); v == "http" || v == "https" {
-			return v
-		}
-	}
-	if r.TLS != nil {
-		return "https"
-	}
-	return "http"
-}
-
 // --- logging ---------------------------------------------------------------
 
 type statusRecorder struct {

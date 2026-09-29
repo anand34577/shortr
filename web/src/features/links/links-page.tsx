@@ -15,6 +15,8 @@ import {
   ArrowUpDown,
   Ban,
   Trash2,
+  RotateCcw,
+  Loader2,
   Tag as TagIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -243,22 +245,22 @@ export default function LinksPage() {
     });
   }
 
-  async function bulkAction(action: "disable" | "enable" | "delete" | "tag", tagName?: string) {
+  async function bulkAction(action: "disable" | "enable" | "delete" | "restore" | "purge" | "tag", tagName?: string) {
     const ids = Array.from(selected);
-    if (action === "delete") {
-      const ok = await confirm({
-        title: `Delete ${ids.length} link${ids.length === 1 ? "" : "s"}?`,
-        description: "They will stop redirecting. You can restore them from the Deleted filter.",
-        confirmLabel: "Delete",
-        variant: "destructive",
-      });
+    const n = `${ids.length} link${ids.length === 1 ? "" : "s"}`;
+    if (action === "delete" || action === "purge") {
+      const ok = await confirm(
+        action === "purge"
+          ? { title: `Permanently delete ${n}?`, description: "Their click history is deleted too. This cannot be undone.", confirmLabel: "Delete permanently", variant: "destructive" }
+          : { title: `Delete ${n}?`, description: "They will stop redirecting. You can restore them from the Deleted filter.", confirmLabel: "Delete", variant: "destructive" },
+      );
       if (!ok) return;
     }
     try {
       const res = await bulk.mutateAsync({ ids, action, tag: tagName });
       const failed = res.items.filter((r) => !r.ok).length;
       const done = ids.length - failed;
-      const verb = { disable: "disabled", enable: "enabled", delete: "deleted", tag: "tagged" }[action];
+      const verb = { disable: "disabled", enable: "enabled", delete: "deleted", restore: "restored", purge: "permanently deleted", tag: "tagged" }[action];
       if (done > 0) toast.success(`${done} link${done === 1 ? "" : "s"} ${verb}`);
       if (failed > 0) toast.error(`${failed} link${failed === 1 ? "" : "s"} could not be ${verb}`);
       setSelected(new Set());
@@ -374,33 +376,47 @@ export default function LinksPage() {
       {selected.size > 0 && (
         <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm">
           <span className="font-medium" aria-live="polite">{selected.size} selected</span>
-          <Button variant="outline" size="sm" className="gap-1.5" onClick={() => bulkAction("disable")}>
-            <Ban className="size-3.5" /> Disable
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => bulkAction("enable")}>
-            Enable
-          </Button>
-          <Input
-            value={bulkTag}
-            onChange={(e) => setBulkTag(e.target.value)}
-            placeholder="Add tag"
-            className="h-8 w-28"
-            aria-label="Tag to add to selected links"
-          />
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={!bulkTag.trim()}
-            onClick={async () => {
-              await bulkAction("tag", bulkTag.trim());
-              setBulkTag("");
-            }}
-          >
-            Tag
-          </Button>
-          <Button variant="outline" size="sm" className="gap-1.5 text-destructive" onClick={() => bulkAction("delete")}>
-            <Trash2 className="size-3.5" /> Delete
-          </Button>
+          {bulk.isPending && <Loader2 className="size-4 animate-spin text-muted-foreground" aria-label="Working" />}
+          {status === "deleted" ? (
+            <>
+              <Button variant="outline" size="sm" className="gap-1.5" disabled={bulk.isPending} onClick={() => bulkAction("restore")}>
+                <RotateCcw className="size-3.5" /> Restore
+              </Button>
+              <Button variant="outline" size="sm" className="gap-1.5 text-destructive" disabled={bulk.isPending} onClick={() => bulkAction("purge")}>
+                <Trash2 className="size-3.5" /> Delete permanently
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button variant="outline" size="sm" className="gap-1.5" disabled={bulk.isPending} onClick={() => bulkAction("disable")}>
+                <Ban className="size-3.5" /> Disable
+              </Button>
+              <Button variant="outline" size="sm" disabled={bulk.isPending} onClick={() => bulkAction("enable")}>
+                Enable
+              </Button>
+              <Input
+                value={bulkTag}
+                onChange={(e) => setBulkTag(e.target.value)}
+                placeholder="Add tag"
+                className="h-8 w-28"
+                aria-label="Tag to add to selected links"
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!bulkTag.trim() || bulk.isPending}
+                onClick={async () => {
+                  await bulkAction("tag", bulkTag.trim());
+                  setBulkTag("");
+                }}
+              >
+                Tag
+              </Button>
+              <Button variant="outline" size="sm" className="gap-1.5 text-destructive" disabled={bulk.isPending} onClick={() => bulkAction("delete")}>
+                <Trash2 className="size-3.5" /> Delete
+              </Button>
+            </>
+          )}
           <Button variant="ghost" size="sm" className="ml-auto" onClick={() => setSelected(new Set())}>
             Clear
           </Button>

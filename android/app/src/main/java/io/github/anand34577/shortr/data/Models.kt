@@ -115,6 +115,24 @@ data class RecentClick(
     val referrerHost: String = "",
 )
 
+/** One recorded visit, with the visitor's IP as stored (depends on the server's IP privacy mode). */
+@Serializable
+data class VisitorClick(
+    val id: Long,
+    val ts: String,
+    val ip: String = "",
+    val country: String = "",
+    val region: String = "",
+    val city: String = "",
+    val referrerHost: String = "",
+    val device: String = "",
+    val os: String = "",
+    val browser: String = "",
+    val isBot: Boolean = false,
+) {
+    val place: String get() = listOf(city, region, country).filter { it.isNotBlank() }.distinct().joinToString(", ")
+}
+
 @Serializable
 data class AliasCheck(val available: Boolean, val reason: String? = null)
 

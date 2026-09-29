@@ -106,6 +106,12 @@ class ShortrApi(
 
     suspend fun recent(): List<RecentClick> = get<Page<RecentClick>>("api/v1/stats/recent") { addQueryParameter("limit", "20") }.items
 
+    suspend fun visitors(id: String, cursor: String? = null, limit: Int = 25): Page<VisitorClick> =
+        get("api/v1/links/$id/clicks") {
+            addQueryParameter("limit", limit.toString())
+            if (!cursor.isNullOrBlank()) addQueryParameter("cursor", cursor)
+        }
+
     suspend fun qrPng(id: String, size: Int = 768): ByteArray {
         val u = base.newBuilder().addPathSegments("api/v1/links/$id/qr.png").addQueryParameter("size", size.toString()).build()
         return sendRaw("GET", u, null).use { it.body.bytes() }

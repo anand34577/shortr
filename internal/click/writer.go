@@ -47,6 +47,8 @@ type Writer struct {
 	store   *store.Store
 	geo     *GeoDB
 	ipLoc   *ipLookup
+	// where the geo backfill left off (only touched by that one job)
+	backfillCursor int64
 	metrics Metrics
 	log     *slog.Logger
 

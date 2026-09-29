@@ -6,7 +6,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { LocalTime } from "@/components/local-time";
 import { useLinkClicks, linkClicksExportUrl } from "@/features/links/api";
-import { countryFlag } from "@/features/links/detail/breakdown-bars";
 import { useCursorPager } from "@/hooks/use-cursor-pager";
 import { LoadError } from "@/components/load-error";
 
@@ -60,9 +59,7 @@ export function ClicksTab({ linkId }: { linkId: string }) {
                         <LocalTime iso={c.ts} />
                       </TableCell>
                       <TableCell className="font-mono text-xs">{c.ip || "—"}</TableCell>
-                      <TableCell className="whitespace-nowrap">
-                        {countryFlag(c.country)} {[c.city, c.country].filter(Boolean).join(", ") || "—"}
-                      </TableCell>
+                      <TableCell className="whitespace-nowrap">{[c.city, c.country].filter(Boolean).join(", ") || "—"}</TableCell>
                       <TableCell className="capitalize">{c.device}</TableCell>
                       <TableCell>{c.browser || "—"}</TableCell>
                       <TableCell className="max-w-40 truncate">{c.referrerHost || "Direct"}</TableCell>

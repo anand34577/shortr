@@ -31,6 +31,9 @@ class LinksViewModel(private val c: AppContainer) : ViewModel() {
         private set
     var loadingMore by mutableStateOf(false)
         private set
+    /** True while enable/disable/delete/restore is running. */
+    var working by mutableStateOf(false)
+        private set
     var error by mutableStateOf<String?>(null)
         private set
     private var cursor: String? = null
@@ -105,12 +108,15 @@ class LinksViewModel(private val c: AppContainer) : ViewModel() {
 
     private suspend fun mutate(block: suspend (ShortrApi) -> Unit): String? {
         val api = c.api() ?: return "Not connected"
+        working = true
         return try {
             block(api)
             c.notifyLinksChanged()
             null
         } catch (e: ApiException) {
             e.message
+        } finally {
+            working = false
         }
     }
 }

@@ -36,6 +36,8 @@ import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material.icons.rounded.Public
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -82,7 +84,6 @@ import io.github.anand34577.shortr.ui.common.StatsRange
 import io.github.anand34577.shortr.ui.common.appViewModel
 import io.github.anand34577.shortr.ui.common.compact
 import io.github.anand34577.shortr.ui.common.copyText
-import io.github.anand34577.shortr.ui.common.countryFlag
 import io.github.anand34577.shortr.ui.common.openUrl
 import io.github.anand34577.shortr.ui.common.relativeTime
 import io.github.anand34577.shortr.ui.common.shareImage
@@ -108,6 +109,7 @@ fun LinkDetailScreen(id: String, onBack: () -> Unit) {
 
     Scaffold(
         topBar = {
+          Column {
             TopAppBar(
                 title = { Text(vm.link?.let { "/" + it.code } ?: "", style = MonoStyle.merge(MaterialTheme.typography.titleLarge)) },
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back") } },
@@ -120,11 +122,13 @@ fun LinkDetailScreen(id: String, onBack: () -> Unit) {
                                 DropdownMenuItem(
                                     text = { Text(if (l.isActive) "Disable link" else "Enable link") },
                                     leadingIcon = { Icon(if (l.isActive) Icons.Rounded.Block else Icons.Rounded.CheckCircle, null) },
+                                    enabled = !vm.busy,
                                     onClick = { menu = false; scope.launch { vm.toggle()?.let { snackbar.showSnackbar(it) } } },
                                 )
                                 DropdownMenuItem(
                                     text = { Text("Delete", color = MaterialTheme.colorScheme.error) },
                                     leadingIcon = { Icon(Icons.Rounded.Delete, null, tint = MaterialTheme.colorScheme.error) },
+                                    enabled = !vm.busy,
                                     onClick = { menu = false; confirmDelete = true },
                                 )
                             }
@@ -132,6 +136,8 @@ fun LinkDetailScreen(id: String, onBack: () -> Unit) {
                     }
                 },
             )
+            if (vm.busy || vm.statsLoading) LinearProgressIndicator(Modifier.fillMaxWidth())
+          }
         },
     ) { padding ->
         val link = vm.link
@@ -169,7 +175,7 @@ fun LinkDetailScreen(id: String, onBack: () -> Unit) {
                             }
                             Box(Modifier.padding(16.dp)) {
                                 when (Breakdown.entries[tab]) {
-                                    Breakdown.Countries -> BreakdownList(s.byCountry, "No visits in this range yet.") { countryFlag(it.key) }
+                                    Breakdown.Countries -> BreakdownList(s.byCountry, "No visits in this range yet.", Icons.Rounded.Public)
                                     Breakdown.Referrers -> BreakdownList(s.byReferrer, "No referrers yet.")
                                     Breakdown.Devices -> BreakdownList(s.byDevice, "No devices yet.")
                                     Breakdown.Browsers -> BreakdownList(s.byBrowser, "No browsers yet.")
@@ -179,6 +185,7 @@ fun LinkDetailScreen(id: String, onBack: () -> Unit) {
                         }
                     }
                 }
+                item { VisitorsCard(vm) }
                 item { Details(link) }
             }
         }
@@ -219,7 +226,8 @@ fun LinkDetailScreen(id: String, onBack: () -> Unit) {
             text = {
                 Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                     val q = vm.qr
-                    if (q == null) CircularProgressIndicator()
+                    if (q == null && vm.qrFailed) Text("Couldn't load the QR code. Close and try again.", style = MaterialTheme.typography.bodyMedium)
+                    else if (q == null) CircularProgressIndicator()
                     else Image(q.first.asImageBitmap(), "QR code for /$code", Modifier.size(240.dp).background(Color.White, RoundedCornerShape(12.dp)).padding(8.dp))
                 }
             },

@@ -25,6 +25,8 @@ import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Language
 import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material.icons.rounded.People
+import androidx.compose.material.icons.rounded.Public
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.TouchApp
 import androidx.compose.material3.Card
@@ -62,7 +64,6 @@ import io.github.anand34577.shortr.ui.common.StatsRange
 import io.github.anand34577.shortr.ui.common.appViewModel
 import io.github.anand34577.shortr.ui.common.compact
 import io.github.anand34577.shortr.ui.common.copyText
-import io.github.anand34577.shortr.ui.common.countryFlag
 import io.github.anand34577.shortr.ui.common.hostOf
 import io.github.anand34577.shortr.ui.common.relativeTime
 import io.github.anand34577.shortr.ui.common.shareText
@@ -93,6 +94,7 @@ fun HomeScreen(outer: PaddingValues, onOpenLink: (String) -> Unit, onSeeAll: () 
                     }
                 }
                 item { QuickShorten(vm) }
+                if (vm.updating && !vm.refreshing) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
                 item {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         StatsRange.entries.forEach { r ->
@@ -216,7 +218,7 @@ private fun RecentRow(click: RecentClick, count: Int, onClick: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text(countryFlag(click.country), style = MaterialTheme.typography.titleLarge)
+        Icon(Icons.Rounded.Public, null, Modifier.size(22.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("/" + click.code, style = MonoStyle.merge(MaterialTheme.typography.bodyMedium), color = MaterialTheme.colorScheme.primary)

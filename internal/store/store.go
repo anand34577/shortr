@@ -237,10 +237,6 @@ func (s *Store) txExec(tx *sql.Tx, ctx context.Context, query string, args ...an
 	return tx.ExecContext(ctx, s.q(query), args...)
 }
 
-func (s *Store) txQueryRow(tx *sql.Tx, ctx context.Context, query string, args ...any) *sql.Row {
-	return tx.QueryRowContext(ctx, s.q(query), args...)
-}
-
 // ErrNotFound is returned by single-row lookups that find nothing.
 var ErrNotFound = errors.New("not found")
 

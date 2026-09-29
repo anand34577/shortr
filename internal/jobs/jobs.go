@@ -27,9 +27,12 @@ type Runner struct {
 	backupKeep          int
 	dataDir             string
 	dbDriver            string
+	geoBackfill         func(context.Context) error
 }
 
 type Config struct {
+	// GeoBackfill, if set, runs every 10 minutes to locate clicks recorded while the IP service was down.
+	GeoBackfill func(context.Context) error
 	Store               *store.Store
 	Notifier            *notify.Notifier
 	Log                 *slog.Logger
@@ -49,6 +52,7 @@ func New(c Config) *Runner {
 		store: c.Store, notifier: c.Notifier, log: c.Log,
 		clickRetentionDays: c.ClickRetentionDays, rollupRetentionDays: c.RollupRetentionDays,
 		backupInterval: c.BackupInterval, backupKeep: c.BackupKeep, dataDir: c.DataDir, dbDriver: c.DBDriver,
+			geoBackfill: c.GeoBackfill,
 	}
 }
 
@@ -63,6 +67,9 @@ func (r *Runner) Run(ctx context.Context) {
 	r.spawn(ctx, "soft_delete_purge", 24*time.Hour, r.purgeSoftDeleted)
 	r.spawn(ctx, "click_retention", 24*time.Hour, r.clickRetention)
 	r.spawn(ctx, "idempotency_gc", time.Hour, r.idempotencyGC)
+	if r.geoBackfill != nil {
+		r.spawn(ctx, "geo_backfill", 10*time.Minute, r.geoBackfill)
+	}
 	if r.backupInterval > 0 {
 		if r.dbDriver == "sqlite" {
 			r.spawn(ctx, "backup", r.backupInterval, r.backup)

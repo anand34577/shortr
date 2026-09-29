@@ -1,7 +1,8 @@
+import type { LucideIcon } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { StatsBreakdownItem } from "@/lib/types";
 
-export function BreakdownBars({ items, loading, labelPrefix }: { items?: StatsBreakdownItem[]; loading?: boolean; labelPrefix?: (key: string) => string }) {
+export function BreakdownBars({ items, loading, icon: Icon }: { items?: StatsBreakdownItem[]; loading?: boolean; icon?: LucideIcon }) {
   if (loading) {
     return (
       <div className="flex flex-col gap-2">
@@ -22,8 +23,9 @@ export function BreakdownBars({ items, loading, labelPrefix }: { items?: StatsBr
     <ul className="flex flex-col gap-2">
       {items.map((item) => (
         <li key={item.key || "unknown"} className="flex items-center gap-3 text-sm">
-          <span className="w-28 shrink-0 truncate text-muted-foreground">
-            {labelPrefix ? labelPrefix(item.key) : item.key || "Unknown"}
+          <span className="flex w-28 shrink-0 items-center gap-1.5 truncate text-muted-foreground">
+            {Icon && <Icon className="size-3.5 shrink-0" aria-hidden="true" />}
+            <span className="truncate">{item.key || "Unknown"}</span>
           </span>
           <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
             <div
@@ -38,14 +40,3 @@ export function BreakdownBars({ items, loading, labelPrefix }: { items?: StatsBr
   );
 }
 
-function countryFlag(code: string) {
-  if (!code || code.length !== 2) return "🌐";
-  const A = 0x1f1e6;
-  const chars = code
-    .toUpperCase()
-    .split("")
-    .map((c) => A + (c.charCodeAt(0) - 65));
-  return String.fromCodePoint(...chars);
-}
-
-export { countryFlag };

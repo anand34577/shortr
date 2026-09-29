@@ -85,10 +85,17 @@ export interface BulkResult {
 export function useBulkLinks() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: { ids: string[]; action: "disable" | "enable" | "delete" | "tag"; tag?: string }) =>
-      api.post<{ items: BulkResult[] }>("/api/v1/links/bulk", {
-        items: input.ids.map((id) => ({ id, action: input.action, tag: input.tag })),
-      }),
+    // the server accepts at most 100 items per request, so a big selection goes in batches
+    mutationFn: async (input: { ids: string[]; action: "disable" | "enable" | "delete" | "restore" | "purge" | "tag"; tag?: string }) => {
+      const items: BulkResult[] = [];
+      for (let i = 0; i < input.ids.length; i += 100) {
+        const res = await api.post<{ items: BulkResult[] }>("/api/v1/links/bulk", {
+          items: input.ids.slice(i, i + 100).map((id) => ({ id, action: input.action, tag: input.tag })),
+        });
+        items.push(...res.items);
+      }
+      return { items };
+    },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["links"] }),
   });
 }

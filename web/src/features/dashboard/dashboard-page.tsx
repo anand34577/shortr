@@ -1,7 +1,7 @@
 import * as React from "react";
 import { Link as RouterLink, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { ArrowRight, Copy, Link2, TrendingDown, TrendingUp, Users, MousePointerClick, Globe2 } from "lucide-react";
+import { ArrowRight, Copy, Link2, TrendingDown, TrendingUp, Users, MousePointerClick, Globe2, Globe } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,7 +12,6 @@ import { ClicksChart } from "@/components/clicks-chart";
 import { useCreateLink } from "@/features/links/api";
 import { useStatsOverview, useRecentActivity } from "@/features/dashboard/api";
 import { RangePicker, rangeToDates, type RangeKey } from "@/features/links/detail/range-picker";
-import { countryFlag } from "@/features/links/detail/breakdown-bars";
 import { targetUrlSchema } from "@/lib/schemas";
 import { copyText } from "@/lib/clipboard";
 import { ApiError } from "@/lib/api";
@@ -175,7 +174,7 @@ export default function DashboardPage() {
             <ul className="flex flex-col divide-y divide-border">
               {groupRecent(recent.data.items).map(({ item, count }) => (
                 <li key={item.id} className="flex items-center gap-3 py-2.5 text-sm">
-                  <span aria-hidden="true">{countryFlag(item.country)}</span>
+                  <Globe className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
                   <RouterLink className="font-mono text-primary hover:underline" to={`/app/links/${item.linkId}`}>
                     {item.code}
                   </RouterLink>
