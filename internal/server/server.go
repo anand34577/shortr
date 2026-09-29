@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"shortr/internal/auth"
@@ -36,10 +37,13 @@ type Server struct {
 	warnProxy  sync.Once
 
 	log       *slog.Logger
-	handler   http.Handler
-	http      *http.Server
+	handler      http.Handler // public plane (or everything in single-port mode)
+	adminHandler http.Handler // nil unless SHORTR_ADMIN_LISTEN is set
+	http         *http.Server
+	adminHTTP    *http.Server
 	sudoMu    sync.Mutex
 	sudoUntil map[string]time.Time // session ID -> end of re-auth window
+	liveSet   atomic.Pointer[liveSettings]
 	spaFS     fs.FS                // nil = SPA disabled (e.g. some tests)
 	startTime time.Time
 	version   string
@@ -75,26 +79,48 @@ func New(d Deps) *Server {
 	if s.log == nil {
 		s.log = slog.Default()
 	}
+	s.reloadSettings(context.Background())
 	s.routes()
 	go s.gcRateLimiters()
-	s.http = &http.Server{
-		Addr:              d.Config.Listen,
-		Handler:           s.handler,
+	s.http = newHTTPServer(d.Config.Listen, s.handler)
+	if s.adminHandler != nil {
+		s.adminHTTP = newHTTPServer(d.Config.AdminListen, s.adminHandler)
+	}
+	return s
+}
+
+func newHTTPServer(addr string, h http.Handler) *http.Server {
+	return &http.Server{
+		Addr:              addr,
+		Handler:           h,
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
 		WriteTimeout:      60 * time.Second,
 		IdleTimeout:       120 * time.Second,
 		MaxHeaderBytes:    64 * 1024,
 	}
-	return s
 }
 
+// ListenAndServe runs the public listener and, in split mode, the admin
+// listener; it returns when either fails.
 func (s *Server) ListenAndServe() error {
-	s.log.Info("listening", "addr", s.cfg.Listen, "base_url", s.cfg.BaseURL)
-	return s.http.ListenAndServe()
+	if s.adminHTTP == nil {
+		s.log.Info("listening", "addr", s.cfg.Listen, "base_url", s.cfg.BaseURL, "ui", s.cfg.UIEnabled)
+		return s.http.ListenAndServe()
+	}
+	s.log.Info("listening (public: redirects + token API)", "addr", s.cfg.Listen, "base_url", s.cfg.BaseURL,
+		"public_api", s.cfg.PublicAPI, "public_admin_api", s.cfg.PublicAdminAPI)
+	s.log.Info("listening (admin: UI + full API)", "addr", s.cfg.AdminListen, "admin_url", s.cfg.AdminURL)
+	errc := make(chan error, 2)
+	go func() { errc <- s.http.ListenAndServe() }()
+	go func() { errc <- s.adminHTTP.ListenAndServe() }()
+	return <-errc
 }
 
 func (s *Server) Shutdown(ctx context.Context) error {
+	if s.adminHTTP != nil {
+		_ = s.adminHTTP.Shutdown(ctx)
+	}
 	return s.http.Shutdown(ctx)
 }
 

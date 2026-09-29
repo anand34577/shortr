@@ -19,6 +19,7 @@ type oidcState struct {
 	Nonce      string `json:"nonce"`
 	Verifier   string `json:"verifier"`
 	Next       string `json:"next"`
+	Redirect   string `json:"redirect"` // callback URL used for this attempt
 	LinkUserID string `json:"linkUserId,omitempty"`
 }
 
@@ -38,7 +39,7 @@ func (s *Server) handleOIDCStart(w http.ResponseWriter, r *http.Request) {
 		respondError(w, r, err)
 		return
 	}
-	st := oidcState{State: state, Nonce: nonce, Verifier: verifier, Next: validate.NextPath(r.URL.Query().Get("next"))}
+	st := oidcState{State: state, Nonce: nonce, Verifier: verifier, Next: validate.NextPath(r.URL.Query().Get("next")), Redirect: s.oidcRedirectURL(r)}
 
 	if r.URL.Query().Get("link") == "1" {
 		u := userFromContext(r.Context())
@@ -55,9 +56,9 @@ func (s *Server) handleOIDCStart(w http.ResponseWriter, r *http.Request) {
 
 	payload, _ := json.Marshal(st)
 	token := auth.SealValue(s.cfg.SecretKey, string(payload), 10*time.Minute)
-	http.SetCookie(w, &http.Cookie{Name: oidcCookieName, Value: token, Path: "/auth/oidc", HttpOnly: true, Secure: s.cfg.CookieSecure, SameSite: http.SameSiteLaxMode, MaxAge: 600})
+	http.SetCookie(w, &http.Cookie{Name: oidcCookieName, Value: token, Path: "/auth/oidc", HttpOnly: true, Secure: s.cookieSecure(r), SameSite: http.SameSiteLaxMode, MaxAge: 600})
 
-	authURL, err := s.oidc.AuthCodeURL(r.Context(), state, nonce, challenge)
+	authURL, err := s.oidc.AuthCodeURL(r.Context(), state, nonce, challenge, st.Redirect)
 	if err != nil {
 		s.renderPublic(w, http.StatusServiceUnavailable, "not_found", map[string]any{})
 		return
@@ -103,7 +104,7 @@ func (s *Server) handleOIDCCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	claims, err := s.oidc.Exchange(r.Context(), code, st.Verifier, st.Nonce, s.cfg.OIDCGroupsClaim)
+	claims, err := s.oidc.Exchange(r.Context(), code, st.Verifier, st.Nonce, s.cfg.OIDCGroupsClaim, st.Redirect)
 	if err != nil {
 		switch err {
 		case auth.ErrEmailUnverified:
@@ -163,7 +164,7 @@ func (s *Server) finishOIDCLogin(w http.ResponseWriter, r *http.Request, st oidc
 		}
 		_ = s.store.UpdateOIDCIdentity(ctx, identity, time.Now())
 
-	case claims.Email != "" && s.cfg.OIDCAutoLinkByEmail:
+	case claims.Email != "" && s.live().OIDCAutoLinkByEmail:
 		existingUser, uerr := s.store.GetUserByEmail(ctx, claims.Email)
 		if uerr == nil && existingUser.EmailVerified {
 			u = existingUser
@@ -184,7 +185,7 @@ func (s *Server) finishOIDCLogin(w http.ResponseWriter, r *http.Request, st oidc
 				return
 			}
 		}
-		if !s.cfg.OIDCAutoCreate {
+		if !s.live().OIDCAutoCreate {
 			s.oidcError(w, r, "OIDC_NO_ACCOUNT", "No account found for you. Ask an admin to invite you.")
 			return
 		}
@@ -241,7 +242,7 @@ func (s *Server) finishOIDCLogin(w http.ResponseWriter, r *http.Request, st oidc
 	u.LastLoginAt = &now
 	_ = s.store.UpdateUser(ctx, u)
 	s.audit(r, u.ID, "user.login.oidc", "user", u.ID, nil)
-	s.startSession(w, r, u)
+	s.startSession(w, r, u, "oidc")
 	http.Redirect(w, r, st.Next, http.StatusFound)
 }
 

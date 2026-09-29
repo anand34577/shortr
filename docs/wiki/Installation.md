@@ -17,13 +17,13 @@ account (this route disables itself after the first admin exists).
 **PostgreSQL instead of SQLite:**
 
 ```bash
-docker compose -f deploy/docker-compose.postgres.yml up -d
+docker compose --env-file .env -f deploy/docker-compose.postgres.yml up -d
 ```
 
 **Behind Nginx Proxy Manager** (TLS termination, your own domain):
 
 ```bash
-docker compose -f deploy/docker-compose.npm.yml up -d
+docker compose --env-file .env -f deploy/docker-compose.npm.yml up -d
 ```
 
 See [deploy/NGINX_PROXY_MANAGER.md](../../deploy/NGINX_PROXY_MANAGER.md) for

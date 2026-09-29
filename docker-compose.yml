@@ -11,6 +11,11 @@ services:
     build: .
     container_name: shortr
     restart: unless-stopped
+    # Every SHORTR_* setting in .env reaches the container (SMTP, OIDC, MFA…);
+    # the environment: block below only supplies defaults and wiring.
+    env_file:
+      - path: .env
+        required: false
     environment:
       SHORTR_BASE_URL: ${SHORTR_BASE_URL:-http://localhost:8080}
       SHORTR_SECRET_KEY: ${SHORTR_SECRET_KEY:-}
@@ -18,10 +23,16 @@ services:
       SHORTR_REGISTRATION: ${SHORTR_REGISTRATION:-closed}
       SHORTR_ADMIN_EMAIL: ${SHORTR_ADMIN_EMAIL:-}
       SHORTR_ADMIN_PASSWORD: ${SHORTR_ADMIN_PASSWORD:-}
+      # Optional: serve the console on its own port (see .env.example)
+      SHORTR_ADMIN_LISTEN: ${SHORTR_ADMIN_LISTEN:-}
+      SHORTR_ADMIN_URL: ${SHORTR_ADMIN_URL:-}
     volumes:
       - shortr-data:/data
     ports:
       - "${SHORTR_PORT:-8080}:8080"
+      # console port in split mode, bound to localhost so only this host (or
+      # a LAN/VPN proxy on it) can reach it; change the IP deliberately
+      - "127.0.0.1:${SHORTR_ADMIN_PORT:-8081}:8081"
     healthcheck:
       test: ["CMD", "/shortr", "healthcheck"]
       interval: 30s

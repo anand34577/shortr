@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="new_link"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_add"
+        android:shortcutShortLabel="@string/shortcut_new_link"
+        android:shortcutLongLabel="@string/shortcut_new_link_long">
+        <intent
+            android:action="io.github.anand34577.shortr.NEW_LINK"
+            android:targetPackage="io.github.anand34577.shortr"
+            android:targetClass="io.github.anand34577.shortr.MainActivity" />
+    </shortcut>
+</shortcuts>

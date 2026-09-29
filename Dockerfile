@@ -29,7 +29,7 @@ COPY --from=build /out/shortr /shortr
 USER nonroot:nonroot
 ENV SHORTR_DATA_DIR=/data
 VOLUME ["/data"]
-EXPOSE 8080
+EXPOSE 8080 8081
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
   CMD ["/shortr", "healthcheck"]
 ENTRYPOINT ["/shortr"]

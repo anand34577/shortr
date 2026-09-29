@@ -1,6 +1,7 @@
 package notify
 
 import (
+	"errors"
 	"context"
 	"encoding/json"
 	"log/slog"
@@ -19,6 +20,7 @@ const (
 	KindNewLogin        Kind = "security.new_login"
 	KindOIDCLinked      Kind = "security.oidc_linked"
 	KindPasswordChanged Kind = "security.password_changed"
+	KindMFAChanged      Kind = "security.mfa_changed"
 	KindBackupCompleted Kind = "system.backup_completed"
 	KindBackupFailed    Kind = "system.backup_failed"
 	KindAdminBroadcast  Kind = "admin.broadcast"
@@ -26,7 +28,7 @@ const (
 
 // AllKinds lists every kind a user can configure in Settings → Notifications.
 var AllKinds = []Kind{
-	KindUserRegistered, KindLinkExpiring, KindPasswordChanged, KindBackupFailed,
+	KindUserRegistered, KindLinkExpiring, KindPasswordChanged, KindMFAChanged, KindBackupFailed,
 }
 
 // ChannelsSettingPrefix is the settings key (plus user ID) holding the
@@ -59,7 +61,7 @@ func channelOn(ctx context.Context, st *store.Store, userID string, kind Kind, c
 // DefaultKindPriority maps a kind to a Gotify priority / email urgency.
 func (k Kind) priority() gotifyPriority {
 	switch k {
-	case KindBackupFailed, KindLoginLockout:
+	case KindBackupFailed, KindLoginLockout, KindMFAChanged:
 		return PriorityHigh
 	case KindLinkExpiring, KindBackupCompleted:
 		return PriorityLow
@@ -127,6 +129,15 @@ type Notifier struct {
 	smtp   *SMTPSender
 	gotify *GotifySender
 	log    *slog.Logger
+}
+
+// SendTestEmail sends synchronously and returns the SMTP error verbatim, so
+// an admin can see exactly why their relay is refusing mail.
+func (n *Notifier) SendTestEmail(to string) error {
+	if n.smtp == nil || !n.smtp.Enabled() {
+		return errors.New("email is not configured (set SHORTR_SMTP_ENABLED=true)")
+	}
+	return n.smtp.Send(to, "Shortr test email", "This is a test message from your Shortr instance.\n\nIf you can read it, email notifications are working.")
 }
 
 func New(st *store.Store, smtp *SMTPSender, gotify *GotifySender, log *slog.Logger) *Notifier {

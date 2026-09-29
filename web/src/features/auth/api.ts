@@ -2,14 +2,27 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
-import type { Me } from "@/lib/types";
+import type { Me, MfaChallenge } from "@/lib/types";
 import type { LoginInput, SetupInput } from "@/lib/schemas";
 import { meQueryKey } from "@/hooks/use-me";
 
 export function useLogin() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: LoginInput) => api.post<Me>("/auth/login", input, { skipAuthRedirect: true }),
+    mutationFn: (input: LoginInput) => api.post<Me | MfaChallenge>("/auth/login", input, { skipAuthRedirect: true }),
+    onSuccess: (res) => {
+      if ("mfaRequired" in res) return; // second step still to come
+      qc.setQueryData(meQueryKey, res);
+      qc.invalidateQueries({ queryKey: ["auth-status"] });
+    },
+  });
+}
+
+export function useLoginMfa() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { mfaToken: string; code?: string; recoveryCode?: string }) =>
+      api.post<Me>("/auth/login/mfa", input, { skipAuthRedirect: true }),
     onSuccess: (me) => {
       qc.setQueryData(meQueryKey, me);
       qc.invalidateQueries({ queryKey: ["auth-status"] });

@@ -101,6 +101,62 @@ jobs:
           files: |
             dist/*
 
+  android:
+    name: Build & publish Android APK
+    runs-on: ubuntu-latest
+    needs: binaries
+    defaults:
+      run:
+        working-directory: android
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Resolve version
+        id: ver
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "name=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+      # Add these repository secrets to publish a properly signed APK:
+      #   SHORTR_KEYSTORE_BASE64 (base64 of your .jks), SHORTR_KEYSTORE_PASSWORD,
+      #   SHORTR_KEY_ALIAS, SHORTR_KEY_PASSWORD. See android/README.md.
+      - name: Build APK
+        env:
+          SHORTR_VERSION_NAME: ${{ steps.ver.outputs.name }}
+          SHORTR_VERSION_CODE: ${{ github.run_number }}
+          KEYSTORE_B64: ${{ secrets.SHORTR_KEYSTORE_BASE64 }}
+          SHORTR_KEYSTORE_PASSWORD: ${{ secrets.SHORTR_KEYSTORE_PASSWORD }}
+          SHORTR_KEY_ALIAS: ${{ secrets.SHORTR_KEY_ALIAS }}
+          SHORTR_KEY_PASSWORD: ${{ secrets.SHORTR_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          if [ -n "${KEYSTORE_B64}" ]; then
+            echo "${KEYSTORE_B64}" | base64 -d > release.jks
+            export SHORTR_KEYSTORE_FILE=release.jks
+            sh ./gradlew --no-configuration-cache assembleRelease
+            cp app/build/outputs/apk/release/app-release.apk "out/shortr-android-${SHORTR_VERSION_NAME}.apk"
+          else
+            echo "::warning::No signing secrets; publishing a debug-signed APK."
+            sh ./gradlew --no-configuration-cache assembleDebug
+            cp app/build/outputs/apk/debug/app-debug.apk "out/shortr-android-${SHORTR_VERSION_NAME}-debug.apk"
+          fi
+          ( cd out && sha256sum *.apk > SHA256SUMS-android )
+
+      - name: Attach to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.ver.outputs.tag }}
+          files: |
+            android/out/*
+
   docker:
     name: Build & push Docker image
     runs-on: ubuntu-latest

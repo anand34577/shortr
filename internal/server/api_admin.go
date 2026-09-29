@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -96,9 +97,12 @@ func (s *Server) handleAdminListUsers(w http.ResponseWriter, r *http.Request, ac
 		respondError(w, r, err)
 		return
 	}
+	mfaOn, _ := s.store.MFAEnabledUserIDs(r.Context())
 	out := make([]userDTO, 0, len(users))
 	for _, u := range users {
 		d := toUserDTO(u)
+		on := mfaOn[u.ID]
+		d.MFAEnabled = &on
 		if n, err := s.store.CountLinksForUser(r.Context(), u.ID); err == nil {
 			d.LinksCount = &n
 		}
@@ -113,7 +117,10 @@ func (s *Server) handleAdminGetUser(w http.ResponseWriter, r *http.Request, acto
 		respondError(w, r, ErrNotFound)
 		return
 	}
-	respondJSON(w, http.StatusOK, toUserDTO(u))
+	d := toUserDTO(u)
+	on := s.userMFA(r.Context(), u.ID).Enabled()
+	d.MFAEnabled = &on
+	respondJSON(w, http.StatusOK, d)
 }
 
 type patchUserReq struct {
@@ -272,7 +279,7 @@ var adminSettableKeys = map[string]string{
 	"oidcAutoCreate": "oidc_auto_create", "oidcAutoLinkByEmail": "oidc_auto_link_by_email",
 	"maxLinksPerUser": "max_links_per_user", "fetchTitles": "fetch_titles",
 	"ipLocationEnabled": "iplocation_enabled", "ipLocationBaseUrl": "iplocation_base_url",
-	"mcpEnabled": "mcp_enabled",
+	"mcpEnabled": "mcp_enabled", "mfaRequired": "mfa_required",
 }
 
 func (s *Server) handleAdminGetSettings(w http.ResponseWriter, r *http.Request, actor *store.User) {
@@ -289,7 +296,7 @@ func (s *Server) handleAdminGetSettings(w http.ResponseWriter, r *http.Request, 
 		"siteName": siteName, "registration": s.cfg.Registration, "defaultRedirectStatus": s.cfg.DefaultRedirectCode,
 		"countBots": s.cfg.CountBots, "oidcAutoCreate": s.cfg.OIDCAutoCreate, "oidcAutoLinkByEmail": s.cfg.OIDCAutoLinkByEmail,
 		"maxLinksPerUser": s.cfg.MaxLinksPerUser, "fetchTitles": s.cfg.FetchTitles, "blockedDomains": s.cfg.BlockedDomains,
-		"ipLocationEnabled": false, "ipLocationBaseUrl": "", "mcpEnabled": false,
+		"ipLocationEnabled": false, "ipLocationBaseUrl": "", "mcpEnabled": false, "mfaRequired": s.cfg.MFARequired,
 	}
 	for wireKey, storeKey := range adminSettableKeys {
 		if v, ok := all[storeKey]; ok {
@@ -334,17 +341,39 @@ func (s *Server) handleAdminPutSettings(w http.ResponseWriter, r *http.Request, 
 		respondError(w, r, err)
 		return
 	}
+	current, err := s.store.AllSettings(r.Context())
+	if err != nil {
+		respondError(w, r, err)
+		return
+	}
+	changed := []string{}
 	for k, v := range req {
 		storeKey, ok := adminSettableKeys[k]
 		if !ok {
 			continue // silently ignore read-only/unknown fields (e.g. baseUrl) instead of failing the whole save
 		}
-		if err := s.store.SetSetting(r.Context(), storeKey, string(v), actor.ID); err != nil {
-			respondError(w, r, err)
-			return
+		if current[storeKey] != string(v) {
+			changed = append(changed, k)
+		}
+		current[storeKey] = string(v)
+	}
+	// validate the merged result before writing anything
+	ls, verrs := s.parseLiveSettings(current)
+	if verrs.HasAny() {
+		respondError(w, r, ValidationFailed(verrs))
+		return
+	}
+	for k, v := range req {
+		if storeKey, ok := adminSettableKeys[k]; ok {
+			if err := s.store.SetSetting(r.Context(), storeKey, string(v), actor.ID); err != nil {
+				respondError(w, r, err)
+				return
+			}
 		}
 	}
-	s.audit(r, actor.ID, "settings.update", "settings", "", nil)
+	s.applySettings(ls)
+	sort.Strings(changed)
+	s.audit(r, actor.ID, "settings.update", "settings", "", map[string]any{"changed": changed})
 	s.handleAdminGetSettings(w, r, actor)
 }
 
@@ -355,7 +384,10 @@ func (s *Server) handleAdminAudit(w http.ResponseWriter, r *http.Request, actor 
 	if v := r.URL.Query().Get("limit"); v != "" {
 		limit, _ = strconv.Atoi(v)
 	}
-	entries, next, err := s.store.ListAudit(r.Context(), r.URL.Query().Get("cursor"), limit)
+	q := r.URL.Query()
+	entries, next, err := s.store.ListAudit(r.Context(), store.AuditFilter{
+		Action: q.Get("action"), ActorID: q.Get("actor"), TargetID: q.Get("target"), Cursor: q.Get("cursor"), Limit: limit,
+	})
 	if err != nil {
 		respondError(w, r, err)
 		return
@@ -485,5 +517,26 @@ func (s *Server) handleAdminSystem(w http.ResponseWriter, r *http.Request, actor
 		"oidcEnabled": s.cfg.OIDCEnabled, "smtpEnabled": s.cfg.SMTPEnabled, "gotifyEnabled": s.cfg.GotifyEnabled,
 		"ipLocationEnabled": ipLocEnabled && ipLocBaseURL != "", "mcpEnabled": s.mcpEnabled(r.Context()),
 		"lastBackupAt": lastBackupAt, "detectedProxyIp": detectedProxyIP,
+		"exposure": map[string]any{
+			"split": s.cfg.Split(), "baseUrl": s.cfg.BaseURL, "publicListen": s.cfg.Listen,
+			"adminListen": s.cfg.AdminListen, "adminUrl": s.cfg.AdminURL,
+			"publicApi": s.cfg.PublicAPI, "publicAdminApi": s.cfg.PublicAdminAPI,
+			"oidcApiTokens": len(s.cfg.OIDCAPIAudiences) > 0, "rootRedirect": s.cfg.RootRedirect,
+		},
 	})
+}
+
+// handleAdminTestEmail sends a test message to the calling admin.
+func (s *Server) handleAdminTestEmail(w http.ResponseWriter, r *http.Request, actor *store.User) {
+	if s.notifier == nil {
+		respondError(w, r, NewAPIError(http.StatusServiceUnavailable, "SMTP_FAILED", "notifications are not available"))
+		return
+	}
+	if err := s.notifier.SendTestEmail(actor.Email); err != nil {
+		s.log.Warn("test email failed", "error", err)
+		respondError(w, r, NewAPIError(http.StatusBadGateway, "SMTP_FAILED", err.Error()))
+		return
+	}
+	s.audit(r, actor.ID, "system.test_email", "user", actor.ID, map[string]any{"to": actor.Email})
+	respondJSON(w, http.StatusOK, map[string]string{"sentTo": actor.Email})
 }

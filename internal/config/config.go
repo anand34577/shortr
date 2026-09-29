@@ -52,6 +52,7 @@ type Config struct {
 	RateLimitAnonCreate string
 
 	Registration    string // closed | open | invite
+	MFARequired     bool   // password sign-ins must use TOTP (admin setting overrides)
 	MaxLinksPerUser int
 	FetchTitles     bool
 
@@ -77,7 +78,7 @@ type Config struct {
 	SMTPUser     string
 	SMTPPass     string
 	SMTPFrom     string
-	SMTPUseTLS   bool
+	SMTPTLS      string // starttls | tls | none
 	SMTPInsecure bool
 
 	GotifyEnabled bool
@@ -99,7 +100,20 @@ type Config struct {
 
 	CORSOrigins []string
 	UIEnabled   bool
+
+	// Split-plane mode: when AdminListen is set, Listen becomes the public
+	// plane (redirects + token-only API) and AdminListen serves the UI.
+	AdminListen    string
+	AdminURL       string
+	PublicAPI      bool
+	PublicAdminAPI bool
+	RootRedirect   string
+
+	OIDCAPIAudiences []string // accept IdP access tokens with these aud/azp values as API Bearer tokens
 }
+
+// Split reports whether the UI/admin plane runs on its own listener.
+func (c *Config) Split() bool { return c.AdminListen != "" }
 
 func env(key, def string) string {
 	if v, ok := os.LookupEnv("SHORTR_" + key); ok && v != "" {
@@ -277,6 +291,9 @@ func Load() (*Config, error) {
 	default:
 		return nil, errors.New("SHORTR_REGISTRATION must be one of closed,open,invite")
 	}
+	if c.MFARequired, err = envBool("MFA_REQUIRED", false); err != nil {
+		return nil, err
+	}
 	if c.MaxLinksPerUser, err = envInt("MAX_LINKS_PER_USER", 0); err != nil {
 		return nil, err
 	}
@@ -308,6 +325,7 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 	c.OIDCAllowedDomains = envList("OIDC_ALLOWED_DOMAINS")
+	c.OIDCAPIAudiences = envList("OIDC_API_AUDIENCES")
 	if c.OIDCInsecureHTTP, err = envBool("OIDC_INSECURE_HTTP", false); err != nil {
 		return nil, err
 	}
@@ -327,15 +345,26 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 	c.SMTPHost = env("SMTP_HOST", "")
-	if c.SMTPPort, err = envInt("SMTP_PORT", 587); err != nil {
+	// SMTP_TLS picks the transport; the older SMTP_USE_TLS=false still means "none".
+	useTLS, err := envBool("SMTP_USE_TLS", true)
+	if err != nil {
+		return nil, err
+	}
+	c.SMTPTLS = "starttls"
+	if !useTLS {
+		c.SMTPTLS = "none"
+	}
+	c.SMTPTLS = strings.ToLower(env("SMTP_TLS", c.SMTPTLS))
+	defPort := map[string]int{"starttls": 587, "tls": 465, "none": 25}[c.SMTPTLS]
+	if defPort == 0 {
+		return nil, fmt.Errorf("SHORTR_SMTP_TLS must be starttls, tls or none, got %q", c.SMTPTLS)
+	}
+	if c.SMTPPort, err = envInt("SMTP_PORT", defPort); err != nil {
 		return nil, err
 	}
 	c.SMTPUser = env("SMTP_USER", "")
 	c.SMTPPass = env("SMTP_PASS", "")
 	c.SMTPFrom = env("SMTP_FROM", "")
-	if c.SMTPUseTLS, err = envBool("SMTP_USE_TLS", true); err != nil {
-		return nil, err
-	}
 	if c.SMTPInsecure, err = envBool("SMTP_INSECURE", false); err != nil {
 		return nil, err
 	}
@@ -385,7 +414,47 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 
+	c.AdminListen = env("ADMIN_LISTEN", "")
+	c.AdminURL = strings.TrimRight(env("ADMIN_URL", ""), "/")
+	if c.PublicAPI, err = envBool("PUBLIC_API", true); err != nil {
+		return nil, err
+	}
+	if c.PublicAdminAPI, err = envBool("PUBLIC_ADMIN_API", false); err != nil {
+		return nil, err
+	}
+	c.RootRedirect = env("ROOT_REDIRECT", "")
+	if c.RootRedirect != "" {
+		if u, err := url.Parse(c.RootRedirect); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			return nil, fmt.Errorf("SHORTR_ROOT_REDIRECT: must be an absolute http(s) URL, got %q", c.RootRedirect)
+		}
+	}
+	if c.Split() {
+		if sameListen(c.AdminListen, c.Listen) {
+			return nil, errors.New("SHORTR_ADMIN_LISTEN must differ from SHORTR_LISTEN")
+		}
+		if c.AdminURL != "" {
+			if u, err := url.Parse(c.AdminURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+				return nil, fmt.Errorf("SHORTR_ADMIN_URL: invalid URL %q", c.AdminURL)
+			}
+		}
+		if c.OIDCEnabled && c.AdminURL == "" {
+			return nil, errors.New("SHORTR_ADMIN_URL is required with SHORTR_ADMIN_LISTEN and OIDC, since SSO sign-in returns to the admin UI")
+		}
+	}
+	if len(c.OIDCAPIAudiences) > 0 && !c.OIDCEnabled {
+		return nil, errors.New("SHORTR_OIDC_API_AUDIENCES needs SHORTR_OIDC_ENABLED=true")
+	}
+
 	return c, nil
+}
+
+func sameListen(a, b string) bool {
+	_, pa, errA := net.SplitHostPort(a)
+	_, pb, errB := net.SplitHostPort(b)
+	if errA != nil || errB != nil {
+		return a == b
+	}
+	return pa == pb // ponytail: same port on different IPs is legal but almost always a typo
 }
 
 func validRedirectStatus(n int) bool {
@@ -434,9 +503,12 @@ func (c *Config) Redacted() map[string]any {
 		"ip_mode": c.IPMode, "registration": c.Registration,
 		"oidc_enabled": c.OIDCEnabled, "oidc_issuer": c.OIDCIssuer,
 		"oidc_client_secret": mask(c.OIDCClientSecret),
-		"smtp_enabled":       c.SMTPEnabled, "smtp_host": c.SMTPHost,
+		"smtp_enabled":       c.SMTPEnabled, "smtp_host": c.SMTPHost, "smtp_port": c.SMTPPort, "smtp_tls": c.SMTPTLS,
 		"gotify_enabled": c.GotifyEnabled, "gotify_url": c.GotifyURL,
-		"metrics_enabled": c.MetricsEnabled,
+		"metrics_enabled": c.MetricsEnabled, "ui_enabled": c.UIEnabled,
+		"admin_listen": c.AdminListen, "admin_url": c.AdminURL,
+		"public_api": c.PublicAPI, "public_admin_api": c.PublicAdminAPI,
+		"root_redirect": c.RootRedirect, "oidc_api_audiences": c.OIDCAPIAudiences,
 	}
 }
 

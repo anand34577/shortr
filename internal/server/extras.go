@@ -154,9 +154,11 @@ func (s *Server) handleSudo(w http.ResponseWriter, r *http.Request, u *store.Use
 	}
 	ok, _, err := auth.VerifyPassword(req.Password, *u.PasswordHash)
 	if err != nil || !ok {
+		s.audit(r, u.ID, "user.sudo_failed", "user", u.ID, nil)
 		respondError(w, r, NewAPIError(http.StatusUnauthorized, "UNAUTHENTICATED", "incorrect password"))
 		return
 	}
+	s.audit(r, u.ID, "user.sudo", "user", u.ID, nil)
 	sess := sessionFromContext(r.Context())
 	if sess == nil {
 		respondError(w, r, ErrUnauthenticated)

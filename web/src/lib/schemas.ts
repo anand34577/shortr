@@ -211,6 +211,7 @@ export const adminSettingsSchema = z.object({
     .max(2048, "Max 2048 characters")
     .refine((v) => v === "" || /^https?:\/\/.+/i.test(v), "Must be a valid http(s) URL"),
   mcpEnabled: z.boolean(),
+  mfaRequired: z.boolean(),
 }).refine((v) => !v.ipLocationEnabled || v.ipLocationBaseUrl !== "", {
   message: "Base URL is required when enabled",
   path: ["ipLocationBaseUrl"],

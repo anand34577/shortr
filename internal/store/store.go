@@ -40,12 +40,25 @@ type Store struct {
 
 // Open connects, applies PRAGMAs/settings, and runs pending migrations.
 func Open(driver, dsn, dataDir string, maxConns int) (*Store, error) {
+	return open(driver, dsn, dataDir, maxConns, true)
+}
+
+// OpenShared is Open without the single-server lock, for short admin CLI
+// commands that must work while the server is running (docker exec).
+// SQLite's own locking keeps the concurrent writes safe.
+func OpenShared(driver, dsn, dataDir string, maxConns int) (*Store, error) {
+	return open(driver, dsn, dataDir, maxConns, false)
+}
+
+func open(driver, dsn, dataDir string, maxConns int, lock bool) (*Store, error) {
 	s := &Store{Driver: driver, dataDir: dataDir}
 
 	switch driver {
 	case "sqlite":
-		if err := s.acquireLock(dataDir); err != nil {
-			return nil, err
+		if lock {
+			if err := s.acquireLock(dataDir); err != nil {
+				return nil, err
+			}
 		}
 		if dir := filepath.Dir(dsn); dir != "." {
 			if err := os.MkdirAll(dir, 0o700); err != nil {
@@ -106,15 +119,21 @@ func Open(driver, dsn, dataDir string, maxConns int) (*Store, error) {
 	return s, nil
 }
 
+// acquireLock takes an OS advisory lock (flock / LockFileEx) on
+// DATA_DIR/shortr.lock so two processes never write one SQLite file. The
+// kernel drops the lock when the process dies, so a crash, OOM kill or power
+// cut never leaves a stale lock that blocks the next start.
 func (s *Store) acquireLock(dataDir string) error {
 	path := filepath.Join(dataDir, "shortr.lock")
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
-		if os.IsExist(err) {
-			return fmt.Errorf("another shortr instance appears to be running against %s (lock file %s exists; remove it if that's not the case)", dataDir, path)
-		}
-		return fmt.Errorf("creating lock file: %w", err)
+		return fmt.Errorf("opening lock file: %w", err)
 	}
+	if err := lockFile(f); err != nil {
+		f.Close()
+		return fmt.Errorf("another shortr instance is already using %s (%v)", dataDir, err)
+	}
+	_ = f.Truncate(0)
 	fmt.Fprintf(f, "%d", os.Getpid())
 	s.lockFile = f
 	return nil
@@ -122,9 +141,7 @@ func (s *Store) acquireLock(dataDir string) error {
 
 func (s *Store) Close() error {
 	if s.lockFile != nil {
-		name := s.lockFile.Name()
-		s.lockFile.Close()
-		os.Remove(name)
+		s.lockFile.Close() // releases the lock; the file itself is left in place on purpose
 	}
 	if s.read != nil && s.read != s.write {
 		s.read.Close()
@@ -147,7 +164,11 @@ func (s *Store) DBSizeBytes(ctx context.Context, sqlitePath string) int64 {
 		if err != nil {
 			return 0
 		}
-		return info.Size()
+		size := info.Size()
+		if wal, err := os.Stat(sqlitePath + "-wal"); err == nil {
+			size += wal.Size() // recent writes live here until the next checkpoint
+		}
+		return size
 	}
 	var n int64
 	if err := s.read.QueryRowContext(ctx, "SELECT pg_database_size(current_database())").Scan(&n); err != nil {

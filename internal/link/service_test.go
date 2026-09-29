@@ -2,6 +2,9 @@ package link
 
 import (
 	"context"
+	"errors"
+	"strings"
+	"sync"
 	"path/filepath"
 	"testing"
 	"time"
@@ -228,5 +231,43 @@ func TestPruneHitsDropsIdleCounters(t *testing.T) {
 	svc.PruneHits(0)
 	if _, ok := svc.hits.Load("x"); ok {
 		t.Fatal("idle counter must be pruned")
+	}
+}
+
+func TestConcurrentColdResolve(t *testing.T) {
+	svc, _ := newTestService(t)
+	l, err := svc.Create(t.Context(), nil, "", CreateInput{TargetURL: "https://example.com/burst"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc.Cache().Invalidate(l.Code)
+	var wg sync.WaitGroup
+	errs := make(chan error, 50)
+	for i := 0; i < 50; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			got, err := svc.ResolveForRedirect(t.Context(), strings.ToUpper(l.Code[:1])+l.Code[1:])
+			if err == nil && got.ID != l.ID {
+				err = errors.New("wrong link")
+			}
+			errs <- err
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestGenerateCodeAlphabetAndLength(t *testing.T) {
+	for i := 0; i < 200; i++ {
+		c, err := GenerateCode(AlphabetBase58, 9)
+		if err != nil || len(c) != 9 || strings.Trim(c, AlphabetBase58) != "" {
+			t.Fatalf("bad code %q (%v)", c, err)
+		}
 	}
 }

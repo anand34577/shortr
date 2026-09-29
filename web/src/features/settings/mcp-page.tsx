@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { SettingsNav } from "@/features/settings/settings-nav";
 import { api } from "@/lib/api";
 import { copyText } from "@/lib/clipboard";
+import { usePublicOrigin } from "@/hooks/use-auth-status";
 
 interface McpTool {
   name: string;
@@ -37,6 +38,7 @@ function CodeBlock({ children }: { children: string }) {
 }
 
 export default function McpPage() {
+  const publicOrigin = usePublicOrigin();
   const [status, setStatus] = React.useState<"checking" | "enabled" | "disabled">("checking");
   const [tools, setTools] = React.useState<McpTool[] | null>(null);
 
@@ -59,7 +61,7 @@ export default function McpPage() {
     };
   }, []);
 
-  const endpoint = `${window.location.origin}/mcp`;
+  const endpoint = `${publicOrigin}/mcp`;
   const clientConfig = JSON.stringify(
     { mcpServers: { shortr: { url: endpoint, headers: { Authorization: "Bearer sk_your_api_key_here" } } } },
     null,

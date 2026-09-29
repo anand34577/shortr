@@ -35,9 +35,10 @@ type OIDCConfig struct {
 type Manager struct {
 	cfg OIDCConfig
 
-	mu       sync.RWMutex
-	provider *oidc.Provider
-	verifier *oidc.IDTokenVerifier
+	mu          sync.RWMutex
+	provider    *oidc.Provider
+	verifier    *oidc.IDTokenVerifier
+	apiVerifier *oidc.IDTokenVerifier // access tokens: audience checked by VerifyAccessToken
 	lastTry  time.Time
 	lastErr  error
 }
@@ -69,6 +70,7 @@ func (m *Manager) tryDiscover(ctx context.Context) error {
 	}
 	m.provider = p
 	m.verifier = p.Verifier(&oidc.Config{ClientID: m.cfg.ClientID, SupportedSigningAlgs: []string{oidc.RS256, oidc.ES256}})
+	m.apiVerifier = p.Verifier(&oidc.Config{SkipClientIDCheck: true, SupportedSigningAlgs: []string{oidc.RS256, oidc.ES256}})
 	m.lastErr = nil
 	return nil
 }
@@ -113,7 +115,9 @@ func PKCE() (verifier, challenge string, err error) {
 }
 
 // AuthCodeURL builds the provider authorization URL.
-func (m *Manager) AuthCodeURL(ctx context.Context, state, nonce, codeChallenge string) (string, error) {
+// redirectURL overrides the configured callback (empty keeps it), so the
+// admin listener in split mode gets SSO back on its own origin.
+func (m *Manager) AuthCodeURL(ctx context.Context, state, nonce, codeChallenge, redirectURL string) (string, error) {
 	if !m.Ready(ctx) {
 		return "", fmt.Errorf("oidc: provider unavailable: %w", m.lastErr)
 	}
@@ -121,6 +125,9 @@ func (m *Manager) AuthCodeURL(ctx context.Context, state, nonce, codeChallenge s
 		oidc.Nonce(nonce),
 		oauth2.SetAuthURLParam("code_challenge", codeChallenge),
 		oauth2.SetAuthURLParam("code_challenge_method", "S256"),
+	}
+	if redirectURL != "" {
+		opts = append(opts, oauth2.SetAuthURLParam("redirect_uri", redirectURL))
 	}
 	return m.oauth2Config().AuthCodeURL(state, opts...), nil
 }
@@ -137,11 +144,15 @@ type Claims struct {
 // Exchange completes the authorization code flow, verifies the ID token
 // (signature, iss, aud, nonce, exp with 60s leeway), and extracts claims —
 // calling userinfo as a fallback if the ID token has no email.
-func (m *Manager) Exchange(ctx context.Context, code, codeVerifier, nonce, groupsClaim string) (*Claims, error) {
+func (m *Manager) Exchange(ctx context.Context, code, codeVerifier, nonce, groupsClaim, redirectURL string) (*Claims, error) {
 	if !m.Ready(ctx) {
 		return nil, fmt.Errorf("oidc: provider unavailable: %w", m.lastErr)
 	}
-	tok, err := m.oauth2Config().Exchange(ctx, code, oauth2.SetAuthURLParam("code_verifier", codeVerifier))
+	opts := []oauth2.AuthCodeOption{oauth2.SetAuthURLParam("code_verifier", codeVerifier)}
+	if redirectURL != "" {
+		opts = append(opts, oauth2.SetAuthURLParam("redirect_uri", redirectURL))
+	}
+	tok, err := m.oauth2Config().Exchange(ctx, code, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("oidc: token exchange failed: %w", err)
 	}
@@ -213,6 +224,52 @@ func (m *Manager) Exchange(ctx context.Context, code, codeVerifier, nonce, group
 		}
 	}
 	return c, nil
+}
+
+// VerifyAccessToken validates a JWT access token issued by the provider
+// (signature, issuer, expiry) and returns its subject. The token must name
+// one of audiences in "aud" or "azp" — Keycloak puts the requesting client in
+// azp and only adds aud entries via an audience mapper, so both are checked.
+// ID tokens (Keycloak typ "ID") are refused: they are not API credentials.
+func (m *Manager) VerifyAccessToken(ctx context.Context, raw string, audiences []string) (string, error) {
+	if !m.Ready(ctx) {
+		return "", fmt.Errorf("oidc: provider unavailable: %w", m.lastErr)
+	}
+	m.mu.RLock()
+	v := m.apiVerifier
+	m.mu.RUnlock()
+	tok, err := v.Verify(ctx, raw)
+	if err != nil {
+		return "", err
+	}
+	var c struct {
+		Azp string `json:"azp"`
+		Typ string `json:"typ"`
+	}
+	if err := tok.Claims(&c); err != nil {
+		return "", err
+	}
+	if strings.EqualFold(c.Typ, "ID") {
+		return "", errors.New("oidc: id token is not an access token")
+	}
+	if !audienceMatch(tok.Audience, c.Azp, audiences) {
+		return "", errors.New("oidc: token audience not accepted")
+	}
+	return tok.Subject, nil
+}
+
+func audienceMatch(aud []string, azp string, want []string) bool {
+	for _, w := range want {
+		if w == azp {
+			return true
+		}
+		for _, a := range aud {
+			if a == w {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 var (

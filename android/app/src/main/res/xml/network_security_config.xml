@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Homelab friendly on purpose:
+  - plain http is allowed so a server on your LAN/VPN (http://10.0.0.5:8080) works;
+    the app warns you when a public server isn't using https.
+  - certificates from CAs you installed yourself (Settings > Security > Encryption &
+    credentials) are trusted, so a private CA / step-ca / self-signed root works.
+-->
+<network-security-config xmlns:tools="http://schemas.android.com/tools">
+    <base-config cleartextTrafficPermitted="true" tools:ignore="InsecureBaseConfiguration">
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="user" tools:ignore="AcceptsUserCertificates" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

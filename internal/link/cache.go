@@ -2,14 +2,13 @@ package link
 
 import (
 	"container/list"
-	"hash/fnv"
 	"sync"
 	"time"
 
 	"shortr/internal/store"
 )
 
-const shardCount = 16
+const shardCount = 64
 const defaultTTL = 5 * time.Minute
 const negativeTTL = 60 * time.Second
 
@@ -55,10 +54,15 @@ func NewCache(totalCapacity int) *Cache {
 	return c
 }
 
+// shardFor is FNV-1a inlined: same distribution as hash/fnv without the
+// per-lookup hasher and []byte allocations on the redirect hot path.
 func (c *Cache) shardFor(code string) *shard {
-	h := fnv.New32a()
-	h.Write([]byte(code))
-	return c.shards[h.Sum32()%shardCount]
+	h := uint32(2166136261)
+	for i := 0; i < len(code); i++ {
+		h ^= uint32(code[i])
+		h *= 16777619
+	}
+	return c.shards[h%shardCount]
 }
 
 // Codes are case-insensitive in the database (unique index on LOWER(code)),
@@ -136,6 +140,16 @@ func (c *Cache) Len() int {
 }
 
 func toLower(s string) string {
+	upper := false
+	for i := 0; i < len(s); i++ {
+		if s[i] >= 'A' && s[i] <= 'Z' {
+			upper = true
+			break
+		}
+	}
+	if !upper {
+		return s // common case: no copy
+	}
 	b := []byte(s)
 	for i, c := range b {
 		if c >= 'A' && c <= 'Z' {

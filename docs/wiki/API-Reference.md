@@ -28,6 +28,27 @@ every handler:
    API keys cannot manage other API keys, change the caller's password, or
    list/revoke sessions — those require a session cookie (`requireSession`
    routes) to limit the blast radius of a leaked key.
+3. **SSO access token** (`Authorization: Bearer <JWT>`), only when
+   `SHORTR_OIDC_API_AUDIENCES` is set. A mobile app signs in with your
+   provider (e.g. Keycloak, authorization code + PKCE) and sends the access
+   token. It must be signed by the configured issuer, unexpired, and carry
+   an allowed `azp` or `aud`; ID tokens are refused. It acts as the linked
+   user with `links:read`, `links:write` and `stats:read`.
+
+In split mode (`SHORTR_ADMIN_LISTEN`), the public listener accepts only
+methods 2 and 3; cookies work on the admin listener.
+
+### Pairing a mobile app
+
+When a key is created in the web console, the one-time reveal dialog also
+shows a QR code encoding:
+
+```
+shortr://connect?server=<SHORTR_BASE_URL, url-encoded>&key=<sk_…, url-encoded>
+```
+
+An app registers the `shortr` scheme, reads `server` and `key`, and calls
+`GET {server}/api/v1/me` to confirm the pairing.
 
 ## Conventions
 
@@ -74,6 +95,10 @@ every handler:
 `POST/GET /apikeys` · `DELETE /apikeys/{id}`
 
 ### Admin (`admin:*` scope + `IsAdmin()` required)
+
+`GET /api/v1/audit` accepts `action` (prefix match, so `user.login_` finds
+failed and locked-out sign-ins), `actor` (user id), `target` (id),
+`cursor` and `limit`.
 `POST/GET /users` · `GET/PATCH/DELETE /users/{id}` ·
 `POST /users/{id}/reset-password` · `DELETE /users/{id}/sessions` ·
 `DELETE /users/{id}/identities/{iid}` · `GET/PUT /settings` ·

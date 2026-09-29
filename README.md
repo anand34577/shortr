@@ -19,11 +19,20 @@ container, no external services required.
   offline GeoIP database), devices, browsers, referrers, UTM campaigns, bot
   filtering, CSV export
 - **Privacy controls** — store, anonymize, hash, or drop visitor IPs
-- **Accounts** — local sign-in, single sign-on through any OIDC provider,
+- **Accounts** — local sign-in with optional two-factor codes (TOTP),
+  single sign-on through any OIDC provider (Keycloak, Authentik, …),
   registration modes, an admin panel for users and settings
-- **Notifications** — in-app, plus optional email (SMTP) and Gotify push
-- **Integrations** — REST API with scoped API keys, OpenAPI spec, and an MCP
+- **Android app** — shorten and manage links, stats, QR codes and "Share →
+  Shortr" from your phone; pair it by scanning a code or sign in with SSO
+- **Private console, public links** — optionally run the console on its own
+  port, so only redirects and a token-only API face the internet
+- **Notifications** — in-app, plus optional email (SMTP with STARTTLS, TLS
+  or a plain LAN relay) and Gotify push
+- **Integrations** — REST API with scoped API keys (or your SSO provider's
+  access tokens), QR pairing for mobile apps, OpenAPI spec, and an MCP
   server for AI assistants
+- **Audit trail** — sign-ins and failed attempts, key, settings, user and
+  link changes, each with IP, user agent and auth method, filterable
 - **Operations** — health and Prometheus endpoints, automatic SQLite
   backups, works behind Nginx Proxy Manager, Traefik, Caddy or Cloudflare
   Tunnel
@@ -62,16 +71,32 @@ Compose variants for other setups:
 
 ```bash
 # PostgreSQL instead of SQLite
-docker compose -f deploy/docker-compose.postgres.yml up -d
+docker compose --env-file .env -f deploy/docker-compose.postgres.yml up -d
 
 # Behind Nginx Proxy Manager
-docker compose -f deploy/docker-compose.npm.yml up -d
+docker compose --env-file .env -f deploy/docker-compose.npm.yml up -d
 ```
 
 See [deploy/NGINX_PROXY_MANAGER.md](deploy/NGINX_PROXY_MANAGER.md) for the
-full NPM walkthrough, including how to expose only the redirect hot path
-publicly (e.g. through a Cloudflare Tunnel) while keeping the admin console
-reachable only over your own VPN.
+full NPM walkthrough, including a Cloudflare Tunnel + VPN setup.
+
+## One port or two
+
+Out of the box everything runs on one port, which is the simplest option.
+If you publish Shortr on the internet but would rather not expose the web
+console, give the console its own port:
+
+```bash
+SHORTR_BASE_URL=https://sho.rt        # public short links
+SHORTR_ADMIN_LISTEN=:8081             # console, sign-in, admin API
+SHORTR_ADMIN_URL=http://10.0.0.5:8081 # how you reach it on your LAN/VPN
+```
+
+Port 8080 then serves only redirects, health checks and an API that accepts
+API keys or SSO tokens (no cookies, no sign-in page, no setup, no metrics).
+Point your tunnel or public proxy at 8080 and keep 8081 on your LAN or VPN.
+Set `SHORTR_PUBLIC_API=false` if nothing but redirects should be public.
+**Admin → System** shows what each port exposes.
 
 Data lives in the `/data` volume. Images are also published to
 `ghcr.io/anand34577/shortr` for each release.
@@ -113,6 +138,26 @@ wiki page.
 If you run behind a reverse proxy, set `SHORTR_TRUSTED_PROXIES` so visitor
 IPs are read correctly. Use `shortr admin create` to add an admin from the
 command line.
+
+## Android app
+
+Download the APK from the
+[Releases](https://github.com/anand34577/shortr/releases) page, then in the
+web console create an API key under **Settings → API keys** and scan the
+QR code it shows. Details, including Keycloak sign-in, are on the
+[Android App](https://github.com/anand34577/shortr/wiki/Android-App) wiki
+page. To build it yourself, see [android/README.md](android/README.md).
+
+## Two-factor sign-in
+
+Password accounts can add an authenticator app under **Settings →
+Security**. Admins can make it mandatory under **Admin → Settings**. If
+someone loses their phone and recovery codes, an admin removes it from the
+user's page, or on the server:
+
+```bash
+shortr admin reset-mfa --email you@example.com
+```
 
 ## API access, MCP, and audit logging
 

@@ -72,10 +72,11 @@ type userDTO struct {
 	CreatedAt     time.Time  `json:"createdAt"`
 	UpdatedAt     time.Time  `json:"updatedAt"`
 
-	MaxLinks           *int `json:"maxLinks"`
-	RoleLocked         bool `json:"roleLocked"`
-	MustChangePassword bool `json:"mustChangePassword"`
-	LinksCount         *int `json:"linksCount,omitempty"`
+	MaxLinks           *int  `json:"maxLinks"`
+	RoleLocked         bool  `json:"roleLocked"`
+	MustChangePassword bool  `json:"mustChangePassword"`
+	LinksCount         *int  `json:"linksCount,omitempty"`
+	MFAEnabled         *bool `json:"mfaEnabled,omitempty"`
 }
 
 func toUserDTO(u *store.User) userDTO {
@@ -88,8 +89,9 @@ func toUserDTO(u *store.User) userDTO {
 
 type meDTO struct {
 	userDTO
-	CSRFToken    string   `json:"csrfToken"`
-	Capabilities []string `json:"capabilities"`
+	CSRFToken         string   `json:"csrfToken"`
+	Capabilities      []string `json:"capabilities"`
+	MFAEnrollRequired bool     `json:"mfaEnrollRequired"`
 }
 
 type apiKeyDTO struct {

@@ -26,7 +26,7 @@ type testEnv struct {
 	cw  *click.Writer
 }
 
-func newTestEnv(t *testing.T) *testEnv {
+func newTestEnv(t *testing.T, opts ...func(*config.Config)) *testEnv {
 	t.Helper()
 	dir := t.TempDir()
 	st, err := store.Open("sqlite", filepath.Join(dir, "t.db"), dir, 4)
@@ -40,6 +40,10 @@ func newTestEnv(t *testing.T) *testEnv {
 		CodeLength: 7, CodeAlphabet: "base58", MaxURLLength: 2048, DefaultRedirectCode: 302,
 		RateLimitRedirect: "1000/1s", RateLimitAPI: "1000/1s", RateLimitAuth: "1000/1s",
 		SecretKey: []byte("0123456789abcdef0123456789abcdef"),
+		UIEnabled: true, PublicAPI: true,
+	}
+	for _, o := range opts {
+		o(cfg)
 	}
 
 	linkSvc := link.NewService(st, link.Config{BaseURL: cfg.BaseURL, BaseHost: cfg.BaseHost, CodeLength: 7, MaxURLLength: 2048, DefaultRedirectStatus: 302})

@@ -40,3 +40,16 @@ func TestSealWrongSecret(t *testing.T) {
 		t.Fatalf("expected invalid with wrong secret, got %v", err)
 	}
 }
+
+func TestAudienceMatch(t *testing.T) {
+	want := []string{"shortr-android"}
+	if !audienceMatch([]string{"account"}, "shortr-android", want) {
+		t.Error("azp should match (Keycloak without an audience mapper)")
+	}
+	if !audienceMatch([]string{"account", "shortr-android"}, "other", want) {
+		t.Error("aud should match")
+	}
+	if audienceMatch([]string{"account"}, "other-client", want) {
+		t.Error("foreign client token accepted")
+	}
+}

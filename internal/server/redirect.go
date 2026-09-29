@@ -185,11 +185,11 @@ func linkCookiePayload(l *store.Link) string {
 	return l.ID + "|" + h
 }
 
-func (s *Server) setPasswordCookie(w http.ResponseWriter, l *store.Link) {
+func (s *Server) setPasswordCookie(w http.ResponseWriter, r *http.Request, l *store.Link) {
 	token := auth.SealValue(s.cfg.SecretKey, linkCookiePayload(l), time.Hour)
 	http.SetCookie(w, &http.Cookie{
 		Name: linkPasswordCookiePrefix + l.Code, Value: token, Path: "/",
-		HttpOnly: true, Secure: s.cfg.CookieSecure, SameSite: http.SameSiteLaxMode, MaxAge: 3600,
+		HttpOnly: true, Secure: s.cookieSecure(r), SameSite: http.SameSiteLaxMode, MaxAge: 3600,
 	})
 }
 
@@ -221,7 +221,7 @@ func (s *Server) handlePasswordSubmit(w http.ResponseWriter, r *http.Request, co
 		s.renderPublic(w, http.StatusOK, "password", map[string]any{"Code": code, "Error": "Incorrect password."})
 		return
 	}
-	s.setPasswordCookie(w, l)
+	s.setPasswordCookie(w, r, l)
 	http.Redirect(w, r, "/"+code, http.StatusSeeOther)
 }
 

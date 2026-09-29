@@ -44,6 +44,7 @@ export default function AdminSettingsPage() {
           ipLocationEnabled: data.ipLocationEnabled,
           ipLocationBaseUrl: data.ipLocationBaseUrl,
           mcpEnabled: data.mcpEnabled,
+          mfaRequired: data.mfaRequired ?? false,
         }
       : undefined,
   });
@@ -118,6 +119,15 @@ export default function AdminSettingsPage() {
               <div className="flex items-center justify-between">
                 <Label htmlFor="fetchTitles">Fetch page titles on create</Label>
                 <Controller control={control} name="fetchTitles" render={({ field }) => <Switch id="fetchTitles" checked={field.value} onCheckedChange={field.onChange} />} />
+              </div>
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <Label htmlFor="mfaRequired">Require two-factor sign-in</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Password accounts must set up an authenticator app before they can do anything else. SSO sign-ins are not affected.
+                  </p>
+                </div>
+                <Controller control={control} name="mfaRequired" render={({ field }) => <Switch id="mfaRequired" checked={field.value} onCheckedChange={field.onChange} />} />
               </div>
               <div className="flex items-center justify-between">
                 <Label htmlFor="countBots">Count bot clicks</Label>

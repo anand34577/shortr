@@ -10,3 +10,10 @@ export function useAuthStatus() {
     retry: false,
   });
 }
+
+/** Public short-link origin (SHORTR_BASE_URL). In split mode the console runs
+ *  on a private address, so never build public URLs from window.location. */
+export function usePublicOrigin(): string {
+  const { data } = useAuthStatus();
+  return data?.baseUrl || window.location.origin;
+}

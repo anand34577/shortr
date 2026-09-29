@@ -29,19 +29,23 @@ func GenerateCode(alphabet string, length int) (string, error) {
 	n := len(alphabet)
 	// largest multiple of n that fits in a byte, for rejection sampling
 	limit := byte(256 - (256 % n))
-	var sb strings.Builder
-	sb.Grow(length)
-	buf := make([]byte, 1)
-	for sb.Len() < length {
+	out := make([]byte, 0, length)
+	buf := make([]byte, length*2) // ~10% rejection for base58/62, so one read almost always suffices
+	for len(out) < length {
 		if _, err := rand.Read(buf); err != nil {
 			return "", err
 		}
-		if buf[0] >= limit {
-			continue
+		for _, b := range buf {
+			if b >= limit {
+				continue
+			}
+			out = append(out, alphabet[int(b)%n])
+			if len(out) == length {
+				break
+			}
 		}
-		sb.WriteByte(alphabet[int(buf[0])%n])
 	}
-	return sb.String(), nil
+	return string(out), nil
 }
 
 // ValidAliasChars reports whether s only contains [A-Za-z0-9_-], 1..64 long,

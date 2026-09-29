@@ -60,6 +60,21 @@ export function useResetUserPassword() {
   });
 }
 
+export function useResetUserMfa() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.delete(`/api/v1/users/${id}/mfa`),
+    onSuccess: (_d, id) => {
+      qc.invalidateQueries({ queryKey: ["admin-user", id] });
+      qc.invalidateQueries({ queryKey: ["admin-users"] });
+    },
+  });
+}
+
+export function useSendTestEmail() {
+  return useMutation({ mutationFn: () => api.post<{ sentTo: string }>("/api/v1/admin/test-email", {}) });
+}
+
 export function useRevokeUserSessions() {
   return useMutation({
     mutationFn: (id: string) => api.delete(`/api/v1/users/${id}/sessions`),
@@ -81,7 +96,7 @@ export function useUpdateAdminSettings() {
   });
 }
 
-export function useAuditLog(params: { cursor?: string; action?: string }) {
+export function useAuditLog(params: { cursor?: string; action?: string; actor?: string }) {
   return useQuery({
     queryKey: ["audit", params],
     queryFn: () => api.get<Page<AuditEntry>>(`/api/v1/audit${buildQuery(params)}`),

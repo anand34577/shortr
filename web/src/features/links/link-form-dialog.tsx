@@ -31,6 +31,7 @@ import { applyServerErrors } from "@/lib/apply-server-errors";
 import { useCreateLink, useUpdateLink, useCheckAlias, usePreviewTitle } from "@/features/links/api";
 import type { Link } from "@/lib/types";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
+import { usePublicOrigin } from "@/hooks/use-auth-status";
 
 const EXPIRY_PRESETS = [
   { label: "1 hour", ms: 3600_000 },
@@ -73,6 +74,7 @@ export function LinkFormDialog({
   onCreated?: (link: Link) => void;
 }) {
   const isEdit = !!link;
+  const publicHost = new URL(usePublicOrigin()).host;
   const create = useCreateLink();
   const update = useUpdateLink(link?.id ?? "");
   const previewTitle = usePreviewTitle();
@@ -224,7 +226,7 @@ export function LinkFormDialog({
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="code">Custom alias (optional)</Label>
             <div className="flex items-center gap-2 rounded-lg border border-input bg-background px-3 shadow-sm focus-within:ring-2 focus-within:ring-ring">
-              <span className="max-w-[45%] shrink-0 truncate text-sm text-muted-foreground">{window.location.host}/</span>
+              <span className="max-w-[45%] shrink-0 truncate text-sm text-muted-foreground">{publicHost}/</span>
               <input
                 id="code"
                 className="h-9 min-w-0 flex-1 bg-transparent text-sm outline-none"

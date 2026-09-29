@@ -26,11 +26,32 @@ export interface User {
   createdAt: string;
   updatedAt: string;
   linksCount?: number;
+  mfaEnabled?: boolean;
 }
 
 export interface Me extends User {
   csrfToken: string;
   capabilities: string[];
+  /** Admin requires two-factor sign-in and this password session has none yet. */
+  mfaEnrollRequired?: boolean;
+}
+
+/** /auth/login answers this instead of Me when a second factor is needed. */
+export interface MfaChallenge {
+  mfaRequired: true;
+  mfaToken: string;
+}
+
+export interface MfaStatus {
+  available: boolean;
+  enabled: boolean;
+  required: boolean;
+  recoveryCodesLeft: number;
+}
+
+export interface MfaSetup {
+  secret: string;
+  otpauthUrl: string;
 }
 
 export interface OIDCIdentity {
@@ -185,6 +206,7 @@ export interface AuthStatus {
   localLogin: boolean;
   registration: "closed" | "open" | "invite";
   siteName: string;
+  baseUrl?: string;
 }
 
 export interface AdminSettings {
@@ -204,6 +226,7 @@ export interface AdminSettings {
   ipLocationEnabled: boolean;
   ipLocationBaseUrl: string;
   mcpEnabled: boolean;
+  mfaRequired: boolean;
 }
 
 export interface AdminSystemInfo {
@@ -223,6 +246,20 @@ export interface AdminSystemInfo {
   gotifyEnabled: boolean;
   ipLocationEnabled: boolean;
   mcpEnabled: boolean;
+  exposure?: Exposure;
+}
+
+/** How the instance is reachable; see SHORTR_ADMIN_LISTEN in the docs. */
+export interface Exposure {
+  split: boolean;
+  baseUrl: string;
+  publicListen: string;
+  adminListen: string;
+  adminUrl: string;
+  publicApi: boolean;
+  publicAdminApi: boolean;
+  oidcApiTokens: boolean;
+  rootRedirect: string;
 }
 
 export interface IPLocation {
@@ -246,6 +283,7 @@ export type NotificationKind =
   | "user.registered"
   | "link.expiring_soon"
   | "security.password_changed"
+  | "security.mfa_changed"
   | "system.backup_failed";
 
 export type NotificationChannel = "email" | "gotify" | "browser";

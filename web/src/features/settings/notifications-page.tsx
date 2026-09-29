@@ -16,6 +16,7 @@ import { LoadError } from "@/components/load-error";
 const KIND_LABELS: Record<NotificationKind, string> = {
   "link.expiring_soon": "A link is about to expire",
   "security.password_changed": "Your password was changed",
+  "security.mfa_changed": "Two-factor sign-in turned on/off or a recovery code was used",
   "user.registered": "A new user signed up (admin)",
   "system.backup_failed": "Backup failed (admin)",
 };

@@ -268,7 +268,7 @@ func (s *Server) handleCheckCode(w http.ResponseWriter, r *http.Request, u *stor
 }
 
 func (s *Server) handleLinkPreview(w http.ResponseWriter, r *http.Request, u *store.User) {
-	if !s.cfg.FetchTitles {
+	if !s.live().FetchTitles {
 		respondJSON(w, http.StatusOK, map[string]any{"title": "", "finalUrl": ""})
 		return
 	}
@@ -325,6 +325,7 @@ func (s *Server) handleBulkLinks(w http.ResponseWriter, r *http.Request, u *stor
 				results = append(results, bulkResult{OK: false, Error: err.Error()})
 				continue
 			}
+			s.audit(r, uid, "link.create", "link", l.ID, map[string]any{"code": l.Code, "bulk": true})
 			results = append(results, bulkResult{OK: true, ID: l.ID})
 			continue
 		}

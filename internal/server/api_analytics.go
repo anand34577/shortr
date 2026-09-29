@@ -66,10 +66,33 @@ type bdRowDTO struct {
 	Pct    float64 `json:"pct"`
 }
 
-func toSeriesDTO(points []store.TimeSeriesPoint) []seriesPointDTO {
-	out := make([]seriesPointDTO, 0, len(points))
+// toSeriesDTO zero-fills the gaps between SQL buckets (which only exist for
+// hours/days that had clicks) so charts show the whole range, not a lone dot.
+// Buckets are UTC, matching the SQL bucketing.
+func toSeriesDTO(points []store.TimeSeriesPoint, from, to time.Time, hourly bool) []seriesPointDTO {
+	step, layout := 24*time.Hour, "2006-01-02"
+	start := from.UTC().Truncate(24 * time.Hour)
+	if hourly {
+		step, layout = time.Hour, "2006-01-02T15"
+		start = from.UTC().Truncate(time.Hour)
+	}
+	byBucket := make(map[string]store.TimeSeriesPoint, len(points))
 	for _, p := range points {
-		out = append(out, seriesPointDTO{Bucket: p.Bucket, Clicks: p.Clicks, Uniques: p.Uniques, Bots: p.Bots})
+		byBucket[p.Bucket] = p
+	}
+	n := int(to.Sub(start)/step) + 1
+	if n > 2000 || n < 1 { // absurd range: skip filling rather than allocate a huge series
+		out := make([]seriesPointDTO, 0, len(points))
+		for _, p := range points {
+			out = append(out, seriesPointDTO{Bucket: p.Bucket, Clicks: p.Clicks, Uniques: p.Uniques, Bots: p.Bots})
+		}
+		return out
+	}
+	out := make([]seriesPointDTO, 0, n)
+	for t := start; t.Before(to); t = t.Add(step) {
+		b := t.Format(layout)
+		p := byBucket[b]
+		out = append(out, seriesPointDTO{Bucket: b, Clicks: p.Clicks, Uniques: p.Uniques, Bots: p.Bots})
 	}
 	return out
 }
@@ -148,7 +171,7 @@ func (s *Server) handleLinkStats(w http.ResponseWriter, r *http.Request, u *stor
 	byReferrer, _ := s.store.ClicksBreakdown(ctx, l.ID, "referrer_host", from, to, 10)
 
 	respondJSON(w, http.StatusOK, linkStatsResp{
-		Series: toSeriesDTO(points), Totals: totalsDTO{Clicks: totalClicks, Uniques: uniques, Bots: totalBots},
+		Series: toSeriesDTO(points, from, to, hourly), Totals: totalsDTO{Clicks: totalClicks, Uniques: uniques, Bots: totalBots},
 		ByCountry: toBDRows(byCountry), ByDevice: toBDRows(byDevice), ByOS: toBDRows(byOS),
 		ByBrowser: toBDRows(byBrowser), ByReferrer: toBDRows(byReferrer),
 	})
@@ -181,11 +204,12 @@ func (s *Server) handleGlobalStats(w http.ResponseWriter, r *http.Request, u *st
 		scopeUserID = ""
 	}
 
+	hourly := to.Sub(from) <= 3*24*time.Hour
 	var points []store.TimeSeriesPoint
 	var totalClicks, uniques int64
 	var referrerRows []store.BreakdownRow
 	if scopeUserID != "" {
-		points, err = s.store.ClicksSeriesRawForUser(ctx, scopeUserID, from, to, to.Sub(from) <= 3*24*time.Hour)
+		points, err = s.store.ClicksSeriesRawForUser(ctx, scopeUserID, from, to, hourly)
 		if err == nil {
 			totalClicks, err = s.store.TotalClicksForUser(ctx, scopeUserID, from, to, false)
 		}
@@ -196,7 +220,7 @@ func (s *Server) handleGlobalStats(w http.ResponseWriter, r *http.Request, u *st
 			referrerRows, _ = s.store.ClicksBreakdownForUser(ctx, scopeUserID, "referrer_host", from, to, 1)
 		}
 	} else {
-		points, err = s.store.ClicksSeriesRaw(ctx, "", from, to, to.Sub(from) <= 3*24*time.Hour)
+		points, err = s.store.ClicksSeriesRaw(ctx, "", from, to, hourly)
 		if err == nil {
 			totalClicks, err = s.store.TotalClicks(ctx, "", from, to, false)
 		}
@@ -250,7 +274,7 @@ func (s *Server) handleGlobalStats(w http.ResponseWriter, r *http.Request, u *st
 
 	respondJSON(w, http.StatusOK, overviewResp{
 		Totals: overviewTotalsDTO{Clicks: totalClicks, Uniques: uniques, ActiveLinks: int64(activeLinks)},
-		Series: toSeriesDTO(points), TopLinks: topLinks, TopReferrer: topReferrer, DeltaPct: deltaPct,
+		Series: toSeriesDTO(points, from, to, hourly), TopLinks: topLinks, TopReferrer: topReferrer, DeltaPct: deltaPct,
 	})
 }
 
