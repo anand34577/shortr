@@ -71,6 +71,49 @@ func TestFrontendContract(t *testing.T) {
 		t.Error("deleted link must expose deletedAt")
 	}
 
+	// bulk purge: only for links already in Trash; restore brings them back
+	var ids []string
+	for _, code := range []string{"purge1", "purge2"} {
+		r = env.do(t, "POST", "/api/v1/links", map[string]string{"targetUrl": "https://example.com/" + code, "code": code}, cookies, csrf)
+		var p linkDTO
+		json.Unmarshal(r.Body.Bytes(), &p) //nolint:errcheck
+		ids = append(ids, p.ID)
+	}
+	bulkDo := func(action string) []bulkResult {
+		items := []map[string]any{}
+		for _, id := range ids {
+			items = append(items, map[string]any{"id": id, "action": action})
+		}
+		r := env.do(t, "POST", "/api/v1/links/bulk", map[string]any{"items": items}, cookies, csrf)
+		var out struct {
+			Items []bulkResult `json:"items"`
+		}
+		json.Unmarshal(r.Body.Bytes(), &out) //nolint:errcheck
+		return out.Items
+	}
+	for _, res := range bulkDo("purge") {
+		if res.OK {
+			t.Error("purge of an active link must be refused")
+		}
+	}
+	bulkDo("delete")
+	for _, res := range bulkDo("restore") {
+		if !res.OK {
+			t.Errorf("bulk restore: %+v", res)
+		}
+	}
+	bulkDo("delete")
+	for _, res := range bulkDo("purge") {
+		if !res.OK {
+			t.Errorf("bulk purge: %+v", res)
+		}
+	}
+	for _, id := range ids {
+		if r := env.do(t, "GET", "/api/v1/links/"+id, nil, cookies, csrf); r.Code != 404 {
+			t.Errorf("purged link still readable: %d", r.Code)
+		}
+	}
+
 	// clicks rows expose ts
 	if _, ok := get("/api/v1/links/" + l.ID + "/clicks")["items"].([]any); !ok {
 		t.Error("clicks.items must be an array")

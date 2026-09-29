@@ -207,6 +207,7 @@ func cmdServe() {
 		Store: st, Notifier: notifier, Log: log,
 		ClickRetentionDays: cfg.ClickRetentionDays, RollupRetentionDays: cfg.RollupRetentionDays,
 		BackupInterval: cfg.BackupInterval, BackupKeep: cfg.BackupKeep, DataDir: cfg.DataDir, DBDriver: cfg.DBDriver,
+			GeoBackfill: clickWriter.BackfillGeo,
 	})
 	jobsDone := make(chan struct{})
 	go func() {

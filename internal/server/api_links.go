@@ -286,7 +286,7 @@ func (s *Server) handleLinkPreview(w http.ResponseWriter, r *http.Request, u *st
 // bulk create/update
 
 type bulkItem struct {
-	Action string        `json:"action"`       // create | delete | disable | enable | tag
+	Action string        `json:"action"`       // create | delete | restore | purge | disable | enable | tag
 	Op     string        `json:"op,omitempty"` // legacy alias for action
 	ID     string        `json:"id,omitempty"`
 	Tag    string        `json:"tag,omitempty"`
@@ -338,6 +338,15 @@ func (s *Server) handleBulkLinks(w http.ResponseWriter, r *http.Request, u *stor
 		switch action {
 		case "delete":
 			opErr = s.links.Delete(r.Context(), l.ID, l.Code)
+		case "restore":
+			opErr = s.links.Restore(r.Context(), l.ID, l.Code)
+		case "purge":
+			// permanent, so only for links already in Trash
+			if l.DeletedAt == nil {
+				opErr = NewAPIError(http.StatusBadRequest, "BAD_REQUEST", "move the link to Trash before deleting it permanently")
+				break
+			}
+			opErr = s.links.Purge(r.Context(), l.ID, l.Code)
 		case "disable", "enable":
 			st := "disabled"
 			if action == "enable" {

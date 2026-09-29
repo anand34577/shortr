@@ -106,9 +106,15 @@ private fun CameraPreview(onResult: (String) -> Unit) {
     val scanner = remember {
         BarcodeScanning.getClient(BarcodeScannerOptions.Builder().setBarcodeFormats(Barcode.FORMAT_QR_CODE).build())
     }
+    // The camera is bound to the activity, so it must be unbound here: otherwise frames keep
+    // arriving after the scanner is closed and the executor is shut down, and the app crashes.
+    val provider = remember { arrayOfNulls<ProcessCameraProvider>(1) }
+    val useCases = remember { arrayOfNulls<androidx.camera.core.UseCase>(2) }
     DisposableEffect(Unit) {
         onDispose {
-            scanner.close()
+            done.set(true)
+            runCatching { provider[0]?.unbind(*useCases.filterNotNull().toTypedArray()) }
+            runCatching { scanner.close() }
             executor.shutdown()
         }
     }
@@ -119,7 +125,8 @@ private fun CameraPreview(onResult: (String) -> Unit) {
             val view = PreviewView(context).apply { scaleType = PreviewView.ScaleType.FILL_CENTER }
             val providerFuture = ProcessCameraProvider.getInstance(context)
             providerFuture.addListener({
-                val provider = providerFuture.get()
+                val cameraProvider = runCatching { providerFuture.get() }.getOrNull() ?: return@addListener
+                provider[0] = cameraProvider
                 val preview = Preview.Builder().build().also { it.surfaceProvider = view.surfaceProvider }
                 val analysis = ImageAnalysis.Builder().setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST).build()
                 analysis.setAnalyzer(executor) { proxy ->
@@ -128,7 +135,9 @@ private fun CameraPreview(onResult: (String) -> Unit) {
                         proxy.close()
                         return@setAnalyzer
                     }
-                    scanner.process(InputImage.fromMediaImage(media, proxy.imageInfo.rotationDegrees))
+                    val task = runCatching { scanner.process(InputImage.fromMediaImage(media, proxy.imageInfo.rotationDegrees)) }
+                        .getOrElse { proxy.close(); return@setAnalyzer }
+                    task
                         .addOnSuccessListener { codes ->
                             val value = codes.firstNotNullOfOrNull { it.rawValue }
                             if (value != null && done.compareAndSet(false, true)) {
@@ -137,9 +146,11 @@ private fun CameraPreview(onResult: (String) -> Unit) {
                         }
                         .addOnCompleteListener { proxy.close() }
                 }
+                useCases[0] = preview
+                useCases[1] = analysis
                 runCatching {
-                    provider.unbindAll()
-                    provider.bindToLifecycle(owner, CameraSelector.DEFAULT_BACK_CAMERA, preview, analysis)
+                    cameraProvider.unbindAll()
+                    cameraProvider.bindToLifecycle(owner, CameraSelector.DEFAULT_BACK_CAMERA, preview, analysis)
                 }
             }, ContextCompat.getMainExecutor(context))
             view

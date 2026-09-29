@@ -40,6 +40,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SnackbarDuration
@@ -135,6 +136,7 @@ fun LinksScreen(outer: PaddingValues, onOpenLink: (String) -> Unit) {
             }
         }
 
+        if (vm.working || (vm.loading && vm.links.isNotEmpty())) LinearProgressIndicator(Modifier.fillMaxWidth())
         PullToRefreshBox(isRefreshing = vm.refreshing, onRefresh = vm::refresh, modifier = Modifier.fillMaxSize()) {
             when {
                 vm.loading && vm.links.isEmpty() -> LoadingBox()

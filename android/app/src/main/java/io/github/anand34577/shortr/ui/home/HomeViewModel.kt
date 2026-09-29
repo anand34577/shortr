@@ -29,6 +29,9 @@ class HomeViewModel(private val c: AppContainer) : ViewModel() {
         private set
     var refreshing by mutableStateOf(false)
         private set
+    /** True while any (re)load is in flight, e.g. after switching the range. */
+    var updating by mutableStateOf(false)
+        private set
     var error by mutableStateOf<String?>(null)
         private set
 
@@ -59,6 +62,7 @@ class HomeViewModel(private val c: AppContainer) : ViewModel() {
     fun load(quiet: Boolean = false) {
         val api = c.api() ?: return
         if (!quiet) loading = true
+        updating = true
         viewModelScope.launch {
             try {
                 val (from, to) = range.window()
@@ -74,6 +78,7 @@ class HomeViewModel(private val c: AppContainer) : ViewModel() {
             } finally {
                 loading = false
                 refreshing = false
+                updating = false
             }
         }
     }

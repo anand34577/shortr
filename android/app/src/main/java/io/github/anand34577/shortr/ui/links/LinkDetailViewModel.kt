@@ -11,6 +11,7 @@ import io.github.anand34577.shortr.data.ApiException
 import io.github.anand34577.shortr.data.AppContainer
 import io.github.anand34577.shortr.data.Link
 import io.github.anand34577.shortr.data.LinkStats
+import io.github.anand34577.shortr.data.VisitorClick
 import io.github.anand34577.shortr.ui.common.StatsRange
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -32,10 +33,43 @@ class LinkDetailViewModel(private val c: AppContainer, private val id: String) :
         private set
     var busy by mutableStateOf(false)
         private set
+    var statsLoading by mutableStateOf(false)
+        private set
+    var qrFailed by mutableStateOf(false)
+        private set
+
+    var visitors by mutableStateOf<List<VisitorClick>>(emptyList())
+        private set
+    var visitorsLoading by mutableStateOf(true)
+        private set
+    var visitorsError by mutableStateOf<String?>(null)
+        private set
+    private var visitorsCursor: String? = null
+    val canLoadMoreVisitors: Boolean get() = visitorsCursor != null
+
+    /** First page (reset) or the next page of recent visitors. */
+    fun loadVisitors(reset: Boolean = true) {
+        val api = c.api() ?: return
+        if (visitorsLoading && !reset) return
+        visitorsLoading = true
+        viewModelScope.launch {
+            try {
+                val page = api.visitors(id, cursor = if (reset) null else visitorsCursor)
+                visitors = if (reset) page.items else (visitors + page.items).distinctBy { it.id }
+                visitorsCursor = page.nextCursor?.takeIf { it.isNotBlank() }
+                visitorsError = null
+            } catch (e: ApiException) {
+                if (e.isAuth) c.signOut() else visitorsError = e.message
+            } finally {
+                visitorsLoading = false
+            }
+        }
+    }
 
     init {
         load()
-        viewModelScope.launch { c.linkChanges.collect { load(quiet = true) } }
+        loadVisitors()
+        viewModelScope.launch { c.linkChanges.collect { load(quiet = true); loadVisitors() } }
     }
 
     fun selectRange(r: StatsRange) {
@@ -64,21 +98,24 @@ class LinkDetailViewModel(private val c: AppContainer, private val id: String) :
 
     private fun loadStats() {
         val api = c.api() ?: return
+        statsLoading = true
         viewModelScope.launch {
             val (from, to) = range.window()
             runCatching { api.linkStats(id, from, to) }.onSuccess { stats = it }
+            statsLoading = false
         }
     }
 
     fun loadQr() {
         if (qr != null) return
         val api = c.api() ?: return
+        qrFailed = false
         viewModelScope.launch {
             runCatching {
                 val png = api.qrPng(id)
                 val bmp = withContext(Dispatchers.Default) { BitmapFactory.decodeByteArray(png, 0, png.size) }
                 qr = bmp to png
-            }
+            }.onFailure { qrFailed = true }
         }
     }
 

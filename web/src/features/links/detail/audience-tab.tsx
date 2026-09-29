@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useLinkStats } from "@/features/links/api";
 import { rangeToDates } from "@/features/links/detail/range-picker";
-import { BreakdownBars, countryFlag } from "@/features/links/detail/breakdown-bars";
+import { Globe } from "lucide-react";
+import { BreakdownBars } from "@/features/links/detail/breakdown-bars";
 
 const DEVICE_COLORS = ["var(--color-primary)", "var(--color-success)", "var(--color-warning)", "var(--color-muted-foreground)"];
 
@@ -22,7 +23,7 @@ export function AudienceTab({ linkId }: { linkId: string }) {
           <CardTitle className="text-sm">Countries</CardTitle>
         </CardHeader>
         <CardContent>
-          <BreakdownBars items={data?.byCountry} loading={isLoading} labelPrefix={(k) => `${countryFlag(k)} ${k || "Unknown"}`} />
+          <BreakdownBars items={data?.byCountry} loading={isLoading} icon={Globe} />
         </CardContent>
       </Card>
 

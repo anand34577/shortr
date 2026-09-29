@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 )
@@ -395,6 +396,34 @@ func (s *Store) DeleteClicksOlderThan(ctx context.Context, cutoff time.Time, chu
 		}
 	}
 	return total, nil
+}
+
+// ClicksMissingGeo returns (ID, IP) of recent clicks that have an IP but no
+// country, newest first, starting below beforeID (0 = from the newest).
+func (s *Store) ClicksMissingGeo(ctx context.Context, since time.Time, beforeID int64, limit int) ([]*Click, error) {
+	if beforeID <= 0 {
+		beforeID = math.MaxInt64
+	}
+	rows, err := s.query(ctx, `SELECT id, ip FROM clicks WHERE country = '' AND ip <> '' AND ts > ? AND id < ? ORDER BY id DESC LIMIT ?`, toMillis(since), beforeID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*Click
+	for rows.Next() {
+		c := &Click{}
+		if err := rows.Scan(&c.ID, &c.IP); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+// SetClickGeo fills in a click's location after the fact.
+func (s *Store) SetClickGeo(ctx context.Context, id int64, country, region, city string) error {
+	_, err := s.execWrite(ctx, `UPDATE clicks SET country = ?, region = ?, city = ? WHERE id = ?`, country, region, city, id)
+	return err
 }
 
 func (s *Store) RecomputeClickCount(ctx context.Context, linkID string) error {

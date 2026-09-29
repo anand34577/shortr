@@ -33,13 +33,6 @@ fun compact(n: Long): String = when {
     else -> NumberFormat.getIntegerInstance().format(n)
 }
 
-/** "DE" -> 🇩🇪; anything else gets a globe. */
-fun countryFlag(code: String): String {
-    if (code.length != 2 || !code.all { it.isLetter() }) return "🌐"
-    val base = 0x1F1E6 - 'A'.code
-    return code.uppercase().map { String(Character.toChars(base + it.code)) }.joinToString("")
-}
-
 /** Server buckets are UTC "yyyy-MM-dd" (daily) or "yyyy-MM-ddTHH" (hourly). */
 fun bucketLabel(b: String): String = if (b.length > 10) {
     val t = LocalDateTime.parse("$b:00").atOffset(ZoneOffset.UTC).atZoneSameInstant(ZoneId.systemDefault())

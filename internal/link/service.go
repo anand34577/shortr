@@ -518,6 +518,16 @@ func (s *Service) Delete(ctx context.Context, id, code string) error {
 	return nil
 }
 
+// Purge permanently removes a link and its click data. Callers decide who may do this.
+func (s *Service) Purge(ctx context.Context, id, code string) error {
+	if err := s.store.PurgeLink(ctx, id); err != nil {
+		return err
+	}
+	s.hits.Delete(id)
+	s.cache.Invalidate(code)
+	return nil
+}
+
 func (s *Service) Restore(ctx context.Context, id, code string) error {
 	if err := s.store.RestoreLink(ctx, id); err != nil {
 		return err
