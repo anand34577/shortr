@@ -35,7 +35,7 @@ the rest of `/api/*`.
 | `get_link` | `links:read` | Get a single link by ID or short code. |
 | `delete_link` | `links:write` | Soft-delete a link (recoverable for 30 days). |
 | `get_link_analytics` | `stats:read` | Click totals + top breakdowns (country/device/browser/referrer) over the last N days. |
-| `check_ip_location` | `stats:read` | Geolocation/ASN lookup for an IP, if GeoIP is configured. |
+| `check_ip_location` | `stats:read` | Geolocation/ASN lookup for an IP, if the IP location service is enabled (Admin → Settings). |
 
 A session-authenticated caller (not an API key) implicitly has every scope
 their role allows, same as the REST API. An API-key caller missing the

@@ -61,10 +61,14 @@ flush before the process exits.
 
 ## GeoIP columns (country/city) are always empty
 
-`SHORTR_GEOIP_DB` isn't set, or points to a file that failed to open — check
+Neither a GeoIP database nor the [IP location service](Configuration#ip-location-service) is configured. Client IPs on loopback/private ranges are never located. If the service is set: it must return the documented JSON at `GET <base>/<ip>`, and after an error the same IP isn't retried for a minute. For a `.mmdb`: `SHORTR_GEOIP_DB` isn't set, or points to a file that failed to open — check
 startup logs for `GeoIP database could not be opened`. Download a
 GeoLite2-City `.mmdb` from MaxMind (free account required) and point
 `SHORTR_GEOIP_DB` at it.
+
+## Every click shows the same IP (or a 127.0.0.1 / proxy address)
+
+Shortr is behind a proxy or tunnel and `SHORTR_TRUSTED_PROXIES` doesn't include it. Also check `SHORTR_IP_MODE` — the default `anonymize` zeroes the last octet; use `full` to store exact addresses.
 
 ## MCP tool calls return "MCP server is disabled"
 

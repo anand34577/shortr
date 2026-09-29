@@ -101,7 +101,7 @@ fun OnboardingFlow() {
 }
 
 @Composable
-private fun BrandMark(size: Int = 72) {
+internal fun BrandMark(size: Int = 72) {
     Box(
         Modifier.size(size.dp).background(MaterialTheme.colorScheme.primary, RoundedCornerShape((size / 3.4f).dp)),
         contentAlignment = Alignment.Center,
