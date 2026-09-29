@@ -22,6 +22,8 @@ type WriterConfig struct {
 	BatchSize     int
 	FlushInterval time.Duration
 	QueueSize     int
+	// IPLocation reports the admin's optional lookup service (enabled, base URL); nil = off.
+	IPLocation func(context.Context) (bool, string)
 }
 
 func (c *WriterConfig) setDefaults() {
@@ -44,6 +46,7 @@ type Writer struct {
 	cfg     WriterConfig
 	store   *store.Store
 	geo     *GeoDB
+	ipLoc   *ipLookup
 	metrics Metrics
 	log     *slog.Logger
 
@@ -61,7 +64,7 @@ func NewWriter(st *store.Store, geo *GeoDB, cfg WriterConfig, m Metrics, log *sl
 		log = slog.Default()
 	}
 	w := &Writer{
-		cfg: cfg, store: st, geo: geo, metrics: m, log: log,
+		cfg: cfg, store: st, geo: geo, ipLoc: &ipLookup{settings: cfg.IPLocation}, metrics: m, log: log,
 		ch:   make(chan Event, cfg.QueueSize),
 		done: make(chan struct{}),
 	}
@@ -167,6 +170,9 @@ func (w *Writer) safeEnrich(ev Event) (c *store.Click) {
 
 func (w *Writer) enrich(ev Event) *store.Click {
 	geo := w.geo.Lookup(ev.RawIP) // must run on the raw IP, before anonymisation
+	if geo.Country == "" {
+		geo = w.ipLoc.Lookup(ev.RawIP)
+	}
 	ua := ParseUA(ev.UserAgent)
 	c := &store.Click{
 		LinkID:         ev.LinkID,

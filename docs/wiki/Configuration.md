@@ -80,9 +80,24 @@ for a Cloudflare Tunnel + VPN walkthrough.
 |---|---|---|
 | `SHORTR_IP_MODE` | `anonymize` | `full` (store raw IP) \| `anonymize` (zero the last octet/64 bits) \| `hash` (keyed HMAC, no raw IP ever stored) \| `none` (don't store IP at all). |
 | `SHORTR_GEOIP_DB` | *(none)* | Path to a MaxMind GeoLite2/GeoIP2 City `.mmdb` file. Geo columns are empty without one. |
+| *(Admin → Settings)* IP location service | off | Base URL of an HTTP service that answers `GET <base>/<ip>` — see [IP location service](#ip-location-service). Fills country/region/city when no `.mmdb` answers. |
 | `SHORTR_CLICK_RETENTION_DAYS` | `365` | Raw click rows older than this are purged daily; `0` disables purging. |
 | `SHORTR_ROLLUP_RETENTION_DAYS` | `0` (disabled) | Daily rollup retention, independent of raw click retention. |
 | `SHORTR_COUNT_BOTS` | `false` | Whether bot-detected hits (chat-app link unfurlers, crawlers) count toward a link's public click counter. They're always recorded and always excluded from analytics "clicks" unless this is true — see the `is_bot` flag. |
+
+### IP location service
+
+An optional, self-supplied lookup service that fills a click's country, region and city. Turn it on in **Admin → Settings → IP location** (enable + base URL). Shortr never ships a default and calls nothing until you set one.
+
+- **Request:** `GET <base>/<ip>`, e.g. `https://ipinfo.example.com/1.1.1.1`. The base may be a hostname, a LAN address (`http://192.168.1.23`) or `http://localhost:PORT`; the private-target block (`SHORTR_ALLOW_PRIVATE_TARGETS`) applies to link targets only, not to this service.
+- **Response:** JSON with `ip`, `country`, `countryCode`, `city`, `subdivision`, `subdivisionCode`, `postal`, `latitude`, `longitude`, `timezone`, `asn`, `asnOrganization`. Every field may be empty. Only `countryCode` (stored as the click's country), `subdivision` (region) and `city` are recorded; the rest is shown by the manual *IP lookup* tool and the MCP `check_ip_location` tool.
+- **Order:** the MaxMind `.mmdb` (if configured) is tried first; the service is used only when it has no country.
+- **Behaviour:** lookups use the raw client IP *before* `SHORTR_IP_MODE` is applied, so geo works even when IPs are anonymised or hashed. Loopback, private and link-local *client* addresses are skipped. Results are cached in memory for 1 hour (4096 entries); a failed or slow (>2 s) lookup is skipped and not retried for 1 minute, so redirects and click recording never wait on it.
+
+### Recording client IPs
+
+- `SHORTR_IP_MODE=full` stores the exact address; the default `anonymize` stores a /24 (IPv4) or /48 (IPv6).
+- The address is the TCP peer unless that peer is in `SHORTR_TRUSTED_PROXIES`, in which case `SHORTR_REAL_IP_HEADER` (falling back to `X-Forwarded-For`) is used. Direct connections on `localhost` or a LAN record the real client address.
 
 ## Rate limiting
 

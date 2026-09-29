@@ -5,6 +5,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -140,6 +141,15 @@ func cmdServe() {
 	clickWriter := click.NewWriter(st, geo, click.WriterConfig{
 		IPMode: cfg.IPMode, Secret: cfg.SecretKey, CountBots: cfg.CountBots,
 		SpoolDir: filepath.Join(cfg.DataDir, "clicks-spool"),
+		IPLocation: func(ctx context.Context) (on bool, base string) {
+			if v, ok, _ := st.GetSetting(ctx, "iplocation_enabled"); ok {
+				_ = json.Unmarshal([]byte(v), &on)
+			}
+			if v, ok, _ := st.GetSetting(ctx, "iplocation_base_url"); ok {
+				_ = json.Unmarshal([]byte(v), &base)
+			}
+			return
+		},
 	}, m, log)
 	clickCtx, clickCancel := context.WithCancel(context.Background())
 	go clickWriter.Run(clickCtx)

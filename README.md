@@ -16,7 +16,7 @@ container, no external services required.
 - **Short links** — custom or generated codes, expiry dates, click limits,
   password protection, tags, bulk import, QR codes, soft delete with restore
 - **Analytics** — clicks over time, countries and cities (with an optional
-  offline GeoIP database), devices, browsers, referrers, UTM campaigns, bot
+  offline GeoIP database or your own IP-lookup service), devices, browsers, referrers, UTM campaigns, bot
   filtering, CSV export
 - **Privacy controls** — store, anonymize, hash, or drop visitor IPs
 - **Accounts** — local sign-in with optional two-factor codes (TOTP),
@@ -138,6 +138,8 @@ wiki page.
 If you run behind a reverse proxy, set `SHORTR_TRUSTED_PROXIES` so visitor
 IPs are read correctly. Use `shortr admin create` to add an admin from the
 command line.
+
+To fill in visitor country and city, point **Admin → Settings → IP location** at a service that answers `GET <base>/<ip>` (see the wiki's Configuration page); to store exact visitor IPs, set `SHORTR_IP_MODE=full`.
 
 ## Android app
 
