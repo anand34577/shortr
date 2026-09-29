@@ -369,11 +369,11 @@ func (s *Server) handleExportClicks(w http.ResponseWriter, r *http.Request, u *s
 	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
 	w.Header().Set("Content-Disposition", `attachment; filename="`+l.Code+`-clicks.csv"`)
 	cw := csv.NewWriter(w)
-	cw.Write([]string{"time", "country", "region", "city", "device", "os", "browser", "referrer_host", "is_bot", "utm_source", "utm_medium", "utm_campaign"}) //nolint:errcheck
+	cw.Write([]string{"time", "ip", "country", "region", "city", "device", "os", "browser", "referrer_host", "is_bot", "utm_source", "utm_medium", "utm_campaign"}) //nolint:errcheck
 
 	err := s.store.StreamClicks(r.Context(), l.ID, func(c *store.Click) error {
 		row := []string{
-			c.TS.UTC().Format(time.RFC3339), csvSafe(c.Country), csvSafe(c.Region), csvSafe(c.City),
+			c.TS.UTC().Format(time.RFC3339), csvSafe(c.IP), csvSafe(c.Country), csvSafe(c.Region), csvSafe(c.City),
 			csvSafe(c.Device), csvSafe(c.OS), csvSafe(c.Browser), csvSafe(c.ReferrerHost),
 			strconv.FormatBool(c.IsBot), csvSafe(c.UTMSource), csvSafe(c.UTMMedium), csvSafe(c.UTMCampaign),
 		}

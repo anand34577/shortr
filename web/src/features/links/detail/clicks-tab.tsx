@@ -45,7 +45,8 @@ export function ClicksTab({ linkId }: { linkId: string }) {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Time</TableHead>
-                    <TableHead>Country</TableHead>
+                    <TableHead>IP</TableHead>
+                    <TableHead>Location</TableHead>
                     <TableHead>Device</TableHead>
                     <TableHead>Browser</TableHead>
                     <TableHead>Referrer</TableHead>
@@ -58,8 +59,9 @@ export function ClicksTab({ linkId }: { linkId: string }) {
                       <TableCell className="whitespace-nowrap text-sm">
                         <LocalTime iso={c.ts} />
                       </TableCell>
-                      <TableCell>
-                        {countryFlag(c.country)} {c.country || "—"}
+                      <TableCell className="font-mono text-xs">{c.ip || "—"}</TableCell>
+                      <TableCell className="whitespace-nowrap">
+                        {countryFlag(c.country)} {[c.city, c.country].filter(Boolean).join(", ") || "—"}
                       </TableCell>
                       <TableCell className="capitalize">{c.device}</TableCell>
                       <TableCell>{c.browser || "—"}</TableCell>
