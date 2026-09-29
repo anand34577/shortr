@@ -59,17 +59,17 @@ the debug build instead.
 
 ### In GitHub Actions
 
-The release workflow signs the APK when these repository secrets exist:
+The release workflow builds a signed release APK from these repository secrets:
 
 | Secret | Value |
 |---|---|
-| `SHORTR_KEYSTORE_BASE64` | `base64 -w0 shortr-release.jks` |
-| `SHORTR_KEYSTORE_PASSWORD` | keystore password |
-| `SHORTR_KEY_ALIAS` | key alias |
-| `SHORTR_KEY_PASSWORD` | key password |
+| `ANDROID_KEYSTORE_BASE64` | `base64 -w0 shortr-release.jks` |
+| `ANDROID_KEYSTORE_PASSWORD` | keystore password |
+| `ANDROID_KEY_ALIAS` | key alias |
+| `ANDROID_KEY_PASSWORD` | key password |
 
-Without them it publishes a debug-signed APK, which installs fine but can't
-be updated by a later properly signed build.
+Without them the release job fails rather than publish an unsigned or debug APK, since
+a debug-signed APK could not be updated by a later properly signed build.
 
 ## Code layout
 
