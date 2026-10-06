@@ -29,7 +29,7 @@ export function ClicksChart({ series, height = 260 }: { series: StatsSeriesPoint
           stroke="var(--color-muted-foreground)"
           minTickGap={24}
         />
-        <YAxis tick={{ fontSize: 12 }} stroke="var(--color-muted-foreground)" allowDecimals={false} width={36} />
+        <YAxis tick={{ fontSize: 12 }} stroke="var(--color-muted-foreground)" allowDecimals={false} width={56} />
         <Tooltip
           contentStyle={{
             background: "var(--color-popover)",

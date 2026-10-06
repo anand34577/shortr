@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/images/hero.png" alt="Shortr dashboard and link analytics"></p>
+
 # Shortr
 
 [![CI](https://github.com/anand34577/shortr/actions/workflows/ci.yml/badge.svg)](https://github.com/anand34577/shortr/actions/workflows/ci.yml)
@@ -10,6 +12,16 @@ container, no external services required.
 - Backend: Go, SQLite by default or PostgreSQL
 - Frontend: React and TypeScript, embedded in the binary
 - Docs: [Wiki](https://github.com/anand34577/shortr/wiki)
+
+## Screenshots
+
+| Dashboard | Link analytics |
+| --- | --- |
+| ![Dashboard](docs/images/dashboard-light.png) | ![Link analytics](docs/images/link-analytics-light.png) |
+| **Links** | **Audience (dark mode)** |
+| ![Links](docs/images/links-light.png) | ![Audience](docs/images/link-audience-dark.png) |
+
+Every page ships with light and dark themes; more captures are in [docs/images](docs/images).
 
 ## Features
 
