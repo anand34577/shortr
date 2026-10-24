@@ -77,9 +77,36 @@ export function usePurgeLink() {
 }
 
 export interface BulkResult {
-  id: string;
+  id?: string;
   ok: boolean;
+  code?: string;
+  shortUrl?: string;
   error?: string;
+}
+
+export interface ImportRow {
+  targetUrl: string;
+  code?: string;
+  title?: string;
+  tags?: string[];
+}
+
+export function useImportLinks() {
+  const qc = useQueryClient();
+  return useMutation({
+    // results come back in input order, so callers can map them to lines
+    mutationFn: async (rows: ImportRow[]) => {
+      const items: BulkResult[] = [];
+      for (let i = 0; i < rows.length; i += 100) {
+        const res = await api.post<{ items: BulkResult[] }>("/api/v1/links/bulk", {
+          items: rows.slice(i, i + 100).map((input) => ({ action: "create", input })),
+        });
+        items.push(...res.items);
+      }
+      return items;
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ["links"] }),
+  });
 }
 
 export function useBulkLinks() {

@@ -71,7 +71,7 @@ for a Cloudflare Tunnel + VPN walkthrough.
 | `SHORTR_DEFAULT_REDIRECT_STATUS` | `302` | One of `301`, `302`, `307`, `308`; overridable per-link. |
 | `SHORTR_ALLOW_PRIVATE_TARGETS` | `false` | Allows short links (and title-fetch/MCP tools) to target private/loopback/link-local IPs. **Leave this false** unless you specifically need internal-network short links — enabling it removes SSRF protection for every user, not just admins. |
 | `SHORTR_BLOCKED_DOMAINS` | *(none)* | Comma-separated hostnames that can never be a link target. |
-| `SHORTR_MAX_LINKS_PER_USER` | `0` (unlimited) | Per-user link quota. |
+| `SHORTR_MAX_LINKS_PER_USER` | `0` (unlimited) | Per-user link quota. An admin can override it for one user with `PATCH /api/v1/users/{id}` `{"maxLinks": n}` (`0` = unlimited, `null` = use this default). |
 | `SHORTR_FETCH_TITLES` | `true` | Best-effort page-title fetch on link creation (SSRF-guarded, 3s timeout, 256KB cap, 3 redirects max). |
 
 ## Analytics / privacy

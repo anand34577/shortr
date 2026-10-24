@@ -141,6 +141,25 @@ func (s *Server) handleAdminPatchUser(w http.ResponseWriter, r *http.Request, ac
 		respondError(w, r, err)
 		return
 	}
+	// nothing in the schema constrains these, so an unknown role or status
+	// would leave the account in a state no check recognises
+	verrs := validate.Errors{}
+	if req.Name != nil && len([]rune(strings.TrimSpace(*req.Name))) > 100 {
+		verrs.Add("name", "must be at most 100 characters")
+	}
+	if req.Role != nil && *req.Role != "admin" && *req.Role != "user" {
+		verrs.Add("role", "must be admin or user")
+	}
+	if req.Status != nil && *req.Status != "active" && *req.Status != "disabled" {
+		verrs.Add("status", "must be active or disabled")
+	}
+	if req.MaxLinks != nil && *req.MaxLinks != nil && **req.MaxLinks < 0 {
+		verrs.Add("maxLinks", "must be 0 (unlimited) or more")
+	}
+	if verrs.HasAny() {
+		respondError(w, r, ValidationFailed(verrs))
+		return
+	}
 	if req.Name != nil {
 		u.Name = strings.TrimSpace(*req.Name)
 	}

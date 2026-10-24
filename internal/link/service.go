@@ -165,7 +165,7 @@ func (s *Service) Create(ctx context.Context, actorUserID *string, actorIP strin
 	verrs := validate.Errors{}
 	pol := s.policy.Load()
 
-	target, err := validate.TargetURL(in.TargetURL, s.cfg.MaxURLLength, s.cfg.AllowPrivateTargets, pol.BlockedDomains, s.cfg.BaseHost)
+	target, err := s.validateTarget(in.TargetURL)
 	if err != nil {
 		verrs.Add("target_url", err.Error())
 	}
@@ -181,12 +181,7 @@ func (s *Service) Create(ctx context.Context, actorUserID *string, actorIP strin
 	if in.Length != 0 && (in.Length < 4 || in.Length > 16) {
 		verrs.Add("length", "must be between 4 and 16")
 	}
-	for _, u := range []string{in.UTMSource, in.UTMMedium, in.UTMCampaign, in.UTMTerm, in.UTMContent} {
-		if len(u) > 255 || strings.ContainsAny(u, "\r\n") {
-			verrs.Add("utm", "each field must be at most 255 characters with no line breaks")
-			break
-		}
-	}
+	validateUTM(&verrs, in.UTMSource, in.UTMMedium, in.UTMCampaign, in.UTMTerm, in.UTMContent)
 	if len(in.Title) > 200 {
 		verrs.Add("title", "must be at most 200 characters")
 	}
@@ -199,15 +194,7 @@ func (s *Service) Create(ctx context.Context, actorUserID *string, actorIP strin
 	if in.MaxClicks != nil && *in.MaxClicks < 1 {
 		verrs.Add("max_clicks", "must be at least 1")
 	}
-	if len(in.Tags) > 10 {
-		verrs.Add("tags", "at most 10 tags allowed")
-	}
-	for _, t := range in.Tags {
-		if !validate.StrLen(t, 1, 32) {
-			verrs.Add("tags", "each tag must be 1-32 characters")
-			break
-		}
-	}
+	validateTags(&verrs, normalizeTags(in.Tags))
 	if in.Password != "" && !validate.StrLen(in.Password, 1, 128) {
 		verrs.Add("password", "must be at most 128 characters")
 	}
@@ -231,13 +218,19 @@ func (s *Service) Create(ctx context.Context, actorUserID *string, actorIP strin
 		return nil, &ValidationError{Errors: verrs}
 	}
 
-	if actorUserID != nil && pol.MaxLinksPerUser > 0 {
-		n, err := s.store.CountLinksForUser(ctx, *actorUserID)
+	if actorUserID != nil {
+		limit, err := s.linkLimitFor(ctx, *actorUserID, pol.MaxLinksPerUser)
 		if err != nil {
 			return nil, err
 		}
-		if n >= pol.MaxLinksPerUser {
-			return nil, ErrLimitReached
+		if limit > 0 {
+			n, err := s.store.CountLinksForUser(ctx, *actorUserID)
+			if err != nil {
+				return nil, err
+			}
+			if n >= limit {
+				return nil, ErrLimitReached
+			}
 		}
 	}
 
@@ -306,6 +299,50 @@ func (s *Service) Create(ctx context.Context, actorUserID *string, actorIP strin
 		// collision: retry with a fresh random code
 	}
 	return nil, ErrCodeExhausted
+}
+
+// linkLimitFor returns the user's link cap: an admin-set per-user override
+// (users.max_links) wins over the global policy; 0 means unlimited.
+func (s *Service) linkLimitFor(ctx context.Context, userID string, global int) (int, error) {
+	u, err := s.store.GetUserByID(ctx, userID)
+	if errors.Is(err, store.ErrNotFound) {
+		return global, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	if u.MaxLinks != nil {
+		return *u.MaxLinks, nil
+	}
+	return global, nil
+}
+
+// validateUTM and validateTags are shared by Create and Update so an edit
+// can never store what a create would have refused.
+func validateUTM(verrs *validate.Errors, vals ...string) {
+	for _, u := range vals {
+		if len(u) > 255 || strings.ContainsAny(u, "\r\n") {
+			verrs.Add("utm", "each field must be at most 255 characters with no line breaks")
+			return
+		}
+	}
+}
+
+func validateTags(verrs *validate.Errors, tags []string) {
+	if len(tags) > 10 {
+		verrs.Add("tags", "at most 10 tags allowed")
+		return
+	}
+	for _, t := range tags {
+		if !validate.StrLen(t, 1, 32) {
+			verrs.Add("tags", "each tag must be 1-32 characters")
+			return
+		}
+	}
+}
+
+func (s *Service) validateTarget(raw string) (string, error) {
+	return validate.TargetURL(raw, s.cfg.MaxURLLength, s.cfg.AllowPrivateTargets, s.policy.Load().BlockedDomains, s.cfg.BaseHost)
 }
 
 func normalizeTags(tags []string) []string {
@@ -408,8 +445,10 @@ func (s *Service) Update(ctx context.Context, l *store.Link, in UpdateInput) err
 			}
 		}
 	}
-	if in.TargetURL != nil {
-		target, err := validate.TargetURL(*in.TargetURL, 8192, false, nil, "")
+	// Same policy as Create: an edit must not be a way around the blocked
+	// domains, the private-address guard or the self-redirect loop check.
+	if in.TargetURL != nil && *in.TargetURL != l.TargetURL {
+		target, err := s.validateTarget(*in.TargetURL)
 		if err != nil {
 			verrs.Add("target_url", err.Error())
 		} else {
@@ -420,7 +459,7 @@ func (s *Service) Update(ctx context.Context, l *store.Link, in UpdateInput) err
 		if len(*in.Title) > 200 {
 			verrs.Add("title", "must be at most 200 characters")
 		} else {
-			l.Title = *in.Title
+			l.Title = strings.TrimSpace(*in.Title)
 		}
 	}
 	if in.Description != nil {
@@ -440,6 +479,8 @@ func (s *Service) Update(ctx context.Context, l *store.Link, in UpdateInput) err
 	if in.Password != nil {
 		if *in.Password == "" {
 			l.PasswordHash = nil
+		} else if !validate.StrLen(*in.Password, 1, 128) {
+			verrs.Add("password", "must be at most 128 characters")
 		} else {
 			h, err := auth.HashPassword(*in.Password)
 			if err != nil {
@@ -456,7 +497,11 @@ func (s *Service) Update(ctx context.Context, l *store.Link, in UpdateInput) err
 		}
 	}
 	if in.MaxClicks != nil {
-		l.MaxClicks = *in.MaxClicks
+		if *in.MaxClicks != nil && **in.MaxClicks < 1 {
+			verrs.Add("max_clicks", "must be at least 1")
+		} else {
+			l.MaxClicks = *in.MaxClicks
+		}
 	}
 	if in.Status != nil {
 		if *in.Status != "active" && *in.Status != "disabled" {
@@ -466,15 +511,17 @@ func (s *Service) Update(ctx context.Context, l *store.Link, in UpdateInput) err
 		}
 	}
 	if in.Tags != nil {
-		if len(*in.Tags) > 10 {
-			verrs.Add("tags", "at most 10 tags allowed")
-		} else {
-			l.Tags = normalizeTags(*in.Tags)
+		tags := normalizeTags(*in.Tags)
+		n := len(verrs)
+		validateTags(&verrs, tags)
+		if len(verrs) == n {
+			l.Tags = tags
 		}
 	}
 	if in.PassQuery != nil {
 		l.PassQuery = *in.PassQuery
 	}
+	validateUTM(&verrs, deref(in.UTMSource), deref(in.UTMMedium), deref(in.UTMCampaign), deref(in.UTMTerm), deref(in.UTMContent))
 	if in.UTMSource != nil {
 		l.UTMSource = *in.UTMSource
 	}
@@ -507,6 +554,13 @@ func (s *Service) Update(ctx context.Context, l *store.Link, in UpdateInput) err
 		s.cache.Invalidate(l.Code)
 	}
 	return nil
+}
+
+func deref(p *string) string {
+	if p == nil {
+		return ""
+	}
+	return *p
 }
 
 func (s *Service) Delete(ctx context.Context, id, code string) error {
