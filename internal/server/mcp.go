@@ -284,7 +284,7 @@ func (s *Server) mcpCreateLink(ctx context.Context, u *store.User, args json.Raw
 	uid := u.ID
 	l, err := s.links.Create(ctx, &uid, "", link.CreateInput{TargetURL: in.TargetURL, Code: in.Code, Title: in.Title, Tags: in.Tags})
 	if err != nil {
-		return errResult(err.Error())
+		return errResult(linkErrMessage(err))
 	}
 	return textResult(s.toLinkDTO(l))
 }

@@ -3,9 +3,9 @@ package link
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"strings"
 	"sync"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -269,5 +269,53 @@ func TestGenerateCodeAlphabetAndLength(t *testing.T) {
 		if err != nil || len(c) != 9 || strings.Trim(c, AlphabetBase58) != "" {
 			t.Fatalf("bad code %q (%v)", c, err)
 		}
+	}
+}
+
+// An edit must pass the same target policy as a create.
+func TestUpdateEnforcesTargetPolicy(t *testing.T) {
+	dir := t.TempDir()
+	st, err := store.Open("sqlite", filepath.Join(dir, "t.db"), dir, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { st.Close() })
+	svc := NewService(st, Config{BaseURL: "https://sho.rt", BaseHost: "sho.rt", BlockedDomains: []string{"evil.com"}})
+	ctx := context.Background()
+	l, err := svc.Create(ctx, nil, "", CreateInput{TargetURL: "https://example.com"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, target := range []string{"https://evil.com/x", "https://sho.rt/loop", "http://127.0.0.1/admin"} {
+		cp := *l
+		if err := svc.Update(ctx, &cp, UpdateInput{TargetURL: &target}); err == nil {
+			t.Fatalf("update to %s accepted", target)
+		}
+	}
+	zero, long := 0, strings.Repeat("x", 33)
+	cp := *l
+	if err := svc.Update(ctx, &cp, UpdateInput{MaxClicks: func() **int { p := &zero; return &p }()}); err == nil {
+		t.Fatal("max_clicks 0 accepted")
+	}
+	cp = *l
+	if err := svc.Update(ctx, &cp, UpdateInput{Tags: &[]string{long}}); err == nil {
+		t.Fatal("33-char tag accepted")
+	}
+}
+
+// The admin-set per-user cap overrides the global policy.
+func TestCreateHonoursPerUserLinkLimit(t *testing.T) {
+	svc, st := newTestService(t)
+	ctx := context.Background()
+	one := 1
+	u := &store.User{Email: "cap@example.com", Role: "user", Status: "active", MaxLinks: &one}
+	if err := st.CreateUser(ctx, u); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Create(ctx, &u.ID, "", CreateInput{TargetURL: "https://example.com/1"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Create(ctx, &u.ID, "", CreateInput{TargetURL: "https://example.com/2"}); !errors.Is(err, ErrLimitReached) {
+		t.Fatalf("second link: got %v, want ErrLimitReached", err)
 	}
 }

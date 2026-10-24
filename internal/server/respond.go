@@ -40,6 +40,8 @@ func respondError(w http.ResponseWriter, r *http.Request, err error) {
 		switch {
 		case errors.Is(err, store.ErrNotFound):
 			ae = ErrNotFound
+		case errors.Is(err, store.ErrInvalidCursor):
+			ae = NewAPIError(http.StatusBadRequest, "BAD_REQUEST", "invalid cursor")
 		case errors.Is(err, store.ErrConflict):
 			ae = NewAPIError(http.StatusConflict, "CONFLICT", "resource already exists")
 		case errors.Is(err, context.DeadlineExceeded):

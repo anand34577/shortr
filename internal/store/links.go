@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"strconv"
 	"strings"
 	"time"
 
@@ -209,14 +210,17 @@ func (s *Store) ListLinks(ctx context.Context, f LinkFilter) ([]*Link, string, e
 	default:
 		where = append(where, "deleted_at IS NULL")
 	}
+	// lower() + explicit ESCAPE: case-insensitive on both SQLite and
+	// Postgres, and a search for "50%" or "my_link" matches literally.
 	if f.Query != "" {
-		where = append(where, "(code LIKE ? OR title LIKE ? OR target_url LIKE ?)")
-		q := "%" + escapeLike(f.Query) + "%"
+		where = append(where, `(lower(code) LIKE ? ESCAPE '\' OR lower(title) LIKE ? ESCAPE '\' OR lower(target_url) LIKE ? ESCAPE '\')`)
+		q := "%" + escapeLike(strings.ToLower(f.Query)) + "%"
 		args = append(args, q, q, q)
 	}
 	if f.Tag != "" {
-		where = append(where, "tags LIKE ?")
-		args = append(args, "%\""+f.Tag+"\"%")
+		tagJSON, _ := json.Marshal(f.Tag) // match the tag as stored inside the JSON array
+		where = append(where, `tags LIKE ? ESCAPE '\'`)
+		args = append(args, "%"+escapeLike(string(tagJSON))+"%")
 	}
 
 	sortCol := "created_at"
@@ -231,17 +235,27 @@ func (s *Store) ListLinks(ctx context.Context, f LinkFilter) ([]*Link, string, e
 		order = "ASC"
 	}
 
+	// Keyset on the column actually sorted by; a created_at cursor under a
+	// clicks/title sort skipped and repeated rows across pages.
 	if f.Cursor != "" {
-		ms, id, err := decodeCursor(f.Cursor)
+		raw, id, err := decodeKeyCursor(f.Cursor)
 		if err != nil {
 			return nil, "", err
+		}
+		var val any = raw
+		if sortCol != "title" {
+			n, err := strconv.ParseInt(raw, 10, 64)
+			if err != nil {
+				return nil, "", ErrInvalidCursor
+			}
+			val = n
 		}
 		cmp := "<"
 		if order == "ASC" {
 			cmp = ">"
 		}
-		where = append(where, "((created_at "+cmp+" ?) OR (created_at = ? AND id "+cmp+" ?))")
-		args = append(args, ms, ms, id)
+		where = append(where, "(("+sortCol+" "+cmp+" ?) OR ("+sortCol+" = ? AND id "+cmp+" ?))")
+		args = append(args, val, val, id)
 	}
 
 	sql := "SELECT " + linkCols + " FROM links"
@@ -267,7 +281,14 @@ func (s *Store) ListLinks(ctx context.Context, f LinkFilter) ([]*Link, string, e
 	next := ""
 	if len(out) > limit {
 		last := out[limit-1]
-		next = encodeCursor(toMillis(last.CreatedAt), last.ID)
+		switch sortCol {
+		case "click_count":
+			next = encodeKeyCursor(strconv.FormatInt(last.ClickCount, 10), last.ID)
+		case "title":
+			next = encodeKeyCursor(last.Title, last.ID)
+		default:
+			next = encodeCursor(toMillis(last.CreatedAt), last.ID)
+		}
 		out = out[:limit]
 	}
 	return out, next, rows.Err()

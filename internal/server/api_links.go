@@ -30,6 +30,25 @@ type createLinkReq struct {
 	UTM            *utmDTO  `json:"utm"`
 }
 
+// toInput is shared by single and bulk create, so both accept every field.
+func (req createLinkReq) toInput() (link.CreateInput, error) {
+	in := link.CreateInput{
+		TargetURL: req.TargetURL, Code: req.Code, Length: req.Length, Title: req.Title, Description: req.Description,
+		RedirectStatus: req.RedirectStatus, Password: req.Password, MaxClicks: req.MaxClicks, Tags: req.Tags, PassQuery: req.PassQuery,
+	}
+	if req.ExpiresAt != nil && *req.ExpiresAt != "" {
+		t, err := time.Parse(time.RFC3339, *req.ExpiresAt)
+		if err != nil {
+			return in, ValidationFailed(validate.Errors{{Field: "expires_at", Message: "must be RFC 3339"}})
+		}
+		in.ExpiresAt = &t
+	}
+	if req.UTM != nil {
+		in.UTMSource, in.UTMMedium, in.UTMCampaign, in.UTMTerm, in.UTMContent = req.UTM.Source, req.UTM.Medium, req.UTM.Campaign, req.UTM.Term, req.UTM.Content
+	}
+	return in, nil
+}
+
 func (s *Server) handleCreateLink(w http.ResponseWriter, r *http.Request, u *store.User) {
 	idemKey := r.Header.Get("Idempotency-Key")
 	if idemKey != "" {
@@ -47,21 +66,10 @@ func (s *Server) handleCreateLink(w http.ResponseWriter, r *http.Request, u *sto
 		respondError(w, r, err)
 		return
 	}
-
-	in := link.CreateInput{
-		TargetURL: req.TargetURL, Code: req.Code, Length: req.Length, Title: req.Title, Description: req.Description,
-		RedirectStatus: req.RedirectStatus, Password: req.Password, MaxClicks: req.MaxClicks, Tags: req.Tags, PassQuery: req.PassQuery,
-	}
-	if req.ExpiresAt != nil && *req.ExpiresAt != "" {
-		t, err := time.Parse(time.RFC3339, *req.ExpiresAt)
-		if err != nil {
-			respondError(w, r, ValidationFailed(validate.Errors{{Field: "expires_at", Message: "must be RFC 3339"}}))
-			return
-		}
-		in.ExpiresAt = &t
-	}
-	if req.UTM != nil {
-		in.UTMSource, in.UTMMedium, in.UTMCampaign, in.UTMTerm, in.UTMContent = req.UTM.Source, req.UTM.Medium, req.UTM.Campaign, req.UTM.Term, req.UTM.Content
+	in, err := req.toInput()
+	if err != nil {
+		respondError(w, r, err)
+		return
 	}
 
 	ip := clientIPFromContext(r.Context())
@@ -199,10 +207,6 @@ func (s *Server) handlePatchLink(w http.ResponseWriter, r *http.Request, u *stor
 	if req.UTM != nil {
 		in.UTMSource, in.UTMMedium, in.UTMCampaign, in.UTMTerm, in.UTMContent = &req.UTM.Source, &req.UTM.Medium, &req.UTM.Campaign, &req.UTM.Term, &req.UTM.Content
 	}
-	if !u.IsAdmin() && req.Status != nil {
-		// non-admin owners may still disable/enable their own links
-	}
-
 	if err := s.links.Update(r.Context(), l, in); err != nil {
 		s.respondLinkErr(w, r, err)
 		return
@@ -293,9 +297,42 @@ type bulkItem struct {
 	Input  createLinkReq `json:"input,omitempty"`
 }
 type bulkResult struct {
-	OK    bool   `json:"ok"`
-	ID    string `json:"id,omitempty"`
-	Error string `json:"error,omitempty"`
+	OK       bool   `json:"ok"`
+	ID       string `json:"id,omitempty"`
+	Code     string `json:"code,omitempty"`     // create only
+	ShortURL string `json:"shortUrl,omitempty"` // create only
+	Error    string `json:"error,omitempty"`
+}
+
+// linkErrMessage turns a create failure (bulk, MCP) into the text a person should read,
+// not the internal "link: ..." / "field: msg; ..." wrapping.
+func linkErrMessage(err error) string {
+	var ve *link.ValidationError
+	switch {
+	case errors.As(err, &ve):
+		parts := make([]string, 0, len(ve.Errors))
+		for _, fe := range ve.Errors {
+			msg := fe.Message
+			if !strings.HasPrefix(msg, fe.Field) { // target_url errors already name the field
+				msg = strings.ReplaceAll(fe.Field, "_", " ") + ": " + msg
+			}
+			parts = append(parts, msg)
+		}
+		return strings.Join(parts, "; ")
+	case errors.Is(err, link.ErrCodeTaken):
+		return ErrCodeTaken.Message
+	case errors.Is(err, link.ErrLimitReached):
+		return ErrLinkLimitReached.Message
+	case errors.Is(err, link.ErrCodeExhausted):
+		return ErrCodeExhausted.Message
+	}
+	if ae, ok := AsAPIError(err); ok {
+		for f, m := range ae.Fields { // toInput reports one field at most
+			return strings.ReplaceAll(f, "_", " ") + ": " + m
+		}
+		return ae.Message
+	}
+	return "could not create this link"
 }
 
 func (s *Server) handleBulkLinks(w http.ResponseWriter, r *http.Request, u *store.User) {
@@ -319,14 +356,17 @@ func (s *Server) handleBulkLinks(w http.ResponseWriter, r *http.Request, u *stor
 			action = item.Op
 		}
 		if action == "create" {
-			in := link.CreateInput{TargetURL: item.Input.TargetURL, Code: item.Input.Code, Title: item.Input.Title}
-			l, err := s.links.Create(r.Context(), &uid, ipStrOrEmpty(ip), in)
+			in, err := item.Input.toInput()
+			var l *store.Link
+			if err == nil {
+				l, err = s.links.Create(r.Context(), &uid, ipStrOrEmpty(ip), in)
+			}
 			if err != nil {
-				results = append(results, bulkResult{OK: false, Error: err.Error()})
+				results = append(results, bulkResult{OK: false, Error: linkErrMessage(err)})
 				continue
 			}
 			s.audit(r, uid, "link.create", "link", l.ID, map[string]any{"code": l.Code, "bulk": true})
-			results = append(results, bulkResult{OK: true, ID: l.ID})
+			results = append(results, bulkResult{OK: true, ID: l.ID, Code: l.Code, ShortURL: s.links.ShortURL(l.Code)})
 			continue
 		}
 		l, err := s.links.Get(r.Context(), item.ID)

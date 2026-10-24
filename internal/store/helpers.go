@@ -24,25 +24,42 @@ func classifyErr(err error) error {
 	return err
 }
 
+// ErrInvalidCursor is returned for a cursor this server did not issue; the
+// API maps it to 400 rather than a 500.
+var ErrInvalidCursor = errors.New("invalid cursor")
+
 // encodeCursor/decodeCursor implement opaque cursor pagination on
 // (sort_value_ms, id) — stable under concurrent inserts, unlike offsets.
 func encodeCursor(ms int64, id string) string {
-	raw := fmt.Sprintf("%d|%s", ms, id)
-	return base64.RawURLEncoding.EncodeToString([]byte(raw))
+	return encodeKeyCursor(strconv.FormatInt(ms, 10), id)
 }
 
 func decodeCursor(cursor string) (int64, string, error) {
+	v, id, err := decodeKeyCursor(cursor)
+	if err != nil {
+		return 0, "", err
+	}
+	ms, err := strconv.ParseInt(v, 10, 64)
+	if err != nil {
+		return 0, "", ErrInvalidCursor
+	}
+	return ms, id, nil
+}
+
+// encodeKeyCursor/decodeKeyCursor carry an arbitrary sort value (e.g. a
+// title). The id never contains "|", so the last one is the separator.
+func encodeKeyCursor(val, id string) string {
+	return base64.RawURLEncoding.EncodeToString([]byte(val + "|" + id))
+}
+
+func decodeKeyCursor(cursor string) (string, string, error) {
 	b, err := base64.RawURLEncoding.DecodeString(cursor)
 	if err != nil {
-		return 0, "", fmt.Errorf("invalid cursor")
+		return "", "", ErrInvalidCursor
 	}
-	parts := strings.SplitN(string(b), "|", 2)
-	if len(parts) != 2 {
-		return 0, "", fmt.Errorf("invalid cursor")
+	i := strings.LastIndexByte(string(b), '|')
+	if i < 0 {
+		return "", "", ErrInvalidCursor
 	}
-	ms, err := strconv.ParseInt(parts[0], 10, 64)
-	if err != nil {
-		return 0, "", fmt.Errorf("invalid cursor")
-	}
-	return ms, parts[1], nil
+	return string(b[:i]), string(b[i+1:]), nil
 }

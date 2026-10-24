@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"math"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -111,12 +112,18 @@ func (s *Store) ListClicks(ctx context.Context, f ClickFilter) ([]*Click, string
 	where := []string{"link_id = ?"}
 	args := []any{f.LinkID}
 	if f.Cursor != "" {
-		ms, _, err := decodeCursor(f.Cursor)
+		ms, idStr, err := decodeCursor(f.Cursor)
 		if err != nil {
 			return nil, "", err
 		}
-		where = append(where, "ts < ?")
-		args = append(args, ms)
+		id, err := strconv.ParseInt(idStr, 10, 64)
+		if err != nil {
+			return nil, "", ErrInvalidCursor
+		}
+		// tie-break on id: a burst of clicks can share one millisecond, and
+		// "ts < ?" alone dropped the rest of them at the page boundary
+		where = append(where, "(ts < ? OR (ts = ? AND id < ?))")
+		args = append(args, ms, ms, id)
 	}
 	sqlStr := `SELECT id, link_id, ts, ip, ip_version, country, region, city, referrer, referrer_host, user_agent, device, os, os_version, browser, browser_version, is_bot, lang, utm_source, utm_medium, utm_campaign, utm_term, utm_content, qs FROM clicks WHERE ` + strings.Join(where, " AND ") + ` ORDER BY ts DESC, id DESC LIMIT ?`
 	args = append(args, limit+1)
