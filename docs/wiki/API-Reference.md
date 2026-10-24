@@ -87,6 +87,11 @@ An app registers the `shortr` scheme, reads `server` and `key`, and calls
 `GET /links/{id}/stats` · `GET /links/{id}/clicks` ·
 `GET /links/{id}/clicks/export` (CSV, formula-injection-safe)
 
+`POST /links/bulk` takes up to 100 `items`, each `{"action": "create", "input": {...}}`
+(same fields as `POST /links`) or `{"action": "delete|restore|purge|disable|enable|tag", "id": "...", "tag": "..."}`.
+It answers `{"items": [{"ok", "id", "code", "shortUrl", "error"}]}` in request order; one bad item never fails the rest.
+The web console's **Links → Import** uses it to create links from pasted lines or a CSV file (`url[,alias[,title]]`).
+
 ### Stats & tools
 `GET /stats/overview` · `GET /stats/recent` ·
 `GET /tools/ip-lookup/{ip}`

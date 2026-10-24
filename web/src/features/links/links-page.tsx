@@ -18,6 +18,7 @@ import {
   RotateCcw,
   Loader2,
   Tag as TagIcon,
+  Upload,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -44,6 +45,7 @@ import { LocalTime } from "@/components/local-time";
 import { EmptyState } from "@/components/empty-state";
 import { useLinks, useBulkLinks, type LinkFilters } from "@/features/links/api";
 import { LinkFormDialog } from "@/features/links/link-form-dialog";
+import { ImportLinksDialog } from "@/features/links/import-links-dialog";
 import { LinkRowMenu } from "@/features/links/link-row-menu";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { QrPanel } from "@/features/links/qr-panel";
@@ -68,6 +70,7 @@ export default function LinksPage() {
   const [sort, setSort] = React.useState<"created_at" | "clicks" | "title">("created_at");
   const [selected, setSelected] = React.useState<Set<string>>(new Set());
   const [createOpen, setCreateOpen] = React.useState(false);
+  const [importOpen, setImportOpen] = React.useState(false);
   const [editLink, setEditLink] = React.useState<Link | null>(null);
   const [qrLink, setQrLink] = React.useState<Link | null>(null);
   const searchRef = React.useRef<HTMLInputElement>(null);
@@ -284,9 +287,14 @@ export default function LinksPage() {
                   : pluralLinks(links.length)}
           </p>
         </div>
-        <Button onClick={() => setCreateOpen(true)} className="gap-2">
-          <Plus className="size-4" /> New link
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setImportOpen(true)} className="gap-2">
+            <Upload className="size-4" /> Import
+          </Button>
+          <Button onClick={() => setCreateOpen(true)} className="gap-2">
+            <Plus className="size-4" /> New link
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
@@ -517,6 +525,7 @@ export default function LinksPage() {
       )}
 
       <LinkFormDialog open={createOpen} onOpenChange={setCreateOpen} />
+      <ImportLinksDialog open={importOpen} onOpenChange={setImportOpen} />
       <LinkFormDialog open={!!editLink} onOpenChange={(o) => !o && setEditLink(null)} link={editLink ?? undefined} />
 
       <Dialog open={!!qrLink} onOpenChange={(o) => !o && setQrLink(null)}>
